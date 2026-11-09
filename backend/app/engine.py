@@ -4,7 +4,9 @@ Pipeline
 --------
 1. **Correlate** - anomalous events (warning+) and cause-type events (e.g. deploys)
    are linked when they occur within ``window_s`` of each other *and* are related:
-   same service, shared trace/request/host id, or connected in the dependency graph.
+   same service, shared trace/request/host id, connected in the dependency graph,
+   or showing the same activity pattern (identical error signature once ids and
+   numbers are stripped). The reason for every link is recorded for explanation.
    Linked events are merged with union-find; each connected group is one incident.
 2. **Rank root causes** - every service in the incident is scored on four
    explainable factors (coverage, precedence, depth, causal signal).
@@ -14,6 +16,7 @@ Pipeline
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -47,32 +50,81 @@ def _participates(e: Event) -> bool:
     return e.is_anomaly or e.type in CAUSE_TYPES
 
 
-def _linked(a: Event, b: Event, topo: Topology) -> bool:
+_VARIABLE_TOKEN = re.compile(r"\b[\w-]*\d[\w.,:%-]*|\b[0-9a-f]{8,}\b", re.I)
+LINK_LABELS = {
+    "same_service": "repeated alerts from the same service",
+    "shared_id": "a shared trace, request or host id",
+    "dependency": "services connected in the dependency graph",
+    "pattern": "the same activity pattern (matching error signature) on different services",
+}
+
+
+def activity_signature(message: str) -> str:
+    """Message template with variable parts (ids, numbers, timings) removed."""
+    return " ".join(_VARIABLE_TOKEN.sub("#", message.lower()).split())
+
+
+def _link_reason(a: Event, b: Event, topo: Topology) -> str | None:
+    """Why two events (already within the time window) belong to the same incident, if they do."""
     if a.service == b.service:
-        return True
+        return "same_service"
     for key in CORRELATION_KEYS:
         value = a.attributes.get(key)
         if value and value == b.attributes.get(key):
-            return True
-    return topo.related(a.service, b.service)
+            return "shared_id"
+    if topo.related(a.service, b.service):
+        return "dependency"
+    sig = activity_signature(a.message)
+    if a.is_anomaly and b.is_anomaly and len(sig) >= 16 and sig == activity_signature(b.message):
+        return "pattern"
+    return None
 
 
-def correlate(events: list[Event], topo: Topology, window_s: float = DEFAULT_WINDOW_S) -> list[list[Event]]:
+def correlate_with_links(events: list[Event], topo: Topology,
+                         window_s: float = DEFAULT_WINDOW_S) -> list[tuple[list[Event], Counter]]:
+    """Group events into incidents. Each group comes with a count of *why* its events were linked."""
     parts = sorted((e for e in events if _participates(e)), key=lambda e: (e.timestamp, e.seq))
     dsu = _DSU(len(parts))
+    merges: list[tuple[int, str]] = []
     start = 0
     for j, ej in enumerate(parts):
         while (ej.timestamp - parts[start].timestamp).total_seconds() > window_s:
             start += 1
         for i in range(start, j):
-            if dsu.find(i) != dsu.find(j) and _linked(parts[i], ej, topo):
+            if dsu.find(i) == dsu.find(j):
+                continue
+            reason = _link_reason(parts[i], ej, topo)
+            if reason:
                 dsu.union(i, j)
+                merges.append((j, reason))
     groups: dict[int, list[Event]] = defaultdict(list)
     for idx, e in enumerate(parts):
         groups[dsu.find(idx)].append(e)
-    incidents = [g for g in groups.values() if any(e.is_anomaly for e in g)]
-    incidents.sort(key=lambda g: (g[0].timestamp, g[0].seq))
-    return incidents
+    links: dict[int, Counter] = defaultdict(Counter)
+    for j, reason in merges:
+        links[dsu.find(j)][reason] += 1
+    result = [(g, links[root]) for root, g in groups.items() if any(e.is_anomaly for e in g)]
+    result.sort(key=lambda item: (item[0][0].timestamp, item[0][0].seq))
+    return result
+
+
+def correlate(events: list[Event], topo: Topology, window_s: float = DEFAULT_WINDOW_S) -> list[list[Event]]:
+    return [g for g, _ in correlate_with_links(events, topo, window_s)]
+
+
+def _correlation_summary(events: list[Event], links: Counter, window_s: float) -> dict:
+    span = (events[-1].timestamp - events[0].timestamp).total_seconds()
+    explanation = [f"{len(events)} events occurred within {span:.0f}s of each other "
+                   f"(correlation window {window_s:.0f}s between consecutive related events)."]
+    for reason in ("dependency", "same_service", "shared_id", "pattern"):
+        if links.get(reason):
+            explanation.append(f"{links[reason]} link{'s' if links[reason] != 1 else ''} via {LINK_LABELS[reason]}.")
+    return {
+        "window_seconds": window_s,
+        "span_seconds": round(span, 1),
+        "links": {r: links.get(r, 0) for r in LINK_LABELS},
+        "explanation": explanation,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +308,8 @@ def build_timeline(events: list[Event], root: str, topo: Topology) -> dict:
 # ---------------------------------------------------------------------------
 # Full incident
 # ---------------------------------------------------------------------------
-def build_incident(events: list[Event], topo: Topology, now: datetime | None = None) -> dict:
+def build_incident(events: list[Event], topo: Topology, now: datetime | None = None,
+                   links: Counter | None = None, window_s: float = DEFAULT_WINDOW_S) -> dict:
     from .recommend import recommend  # local import avoids a cycle
 
     now = now or datetime.now(timezone.utc)
@@ -295,6 +348,7 @@ def build_incident(events: list[Event], topo: Topology, now: datetime | None = N
         "candidates": candidates[:6],
         "impact": impact,
         "timeline": timeline,
+        "correlation": _correlation_summary(events, links or Counter(), window_s),
         "event_ids": [e.id for e in events],
     }
     incident["recommendations"] = recommend(incident, topo)
@@ -303,7 +357,8 @@ def build_incident(events: list[Event], topo: Topology, now: datetime | None = N
 
 def analyse(events: list[Event], topo: Topology, window_s: float = DEFAULT_WINDOW_S,
             now: datetime | None = None) -> list[dict]:
-    incidents = [build_incident(g, topo, now) for g in correlate(events, topo, window_s)]
+    incidents = [build_incident(g, topo, now, links, window_s)
+                 for g, links in correlate_with_links(events, topo, window_s)]
     order = {"SEV1": 0, "SEV2": 1, "SEV3": 2}
     incidents.sort(key=lambda i: i["started_at"], reverse=True)  # newest first...
     incidents.sort(key=lambda i: (i["status"] != "active", order[i["severity"]]))  # ...within status/severity

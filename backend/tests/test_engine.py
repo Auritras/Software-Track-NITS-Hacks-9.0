@@ -91,6 +91,30 @@ def test_unknown_services_correlate_by_trace_id():
     assert sorted(i["service_count"] for i in incidents) == [1, 2]
 
 
+def test_activity_pattern_links_unmapped_services():
+    store = EventStore()
+    store.add_raw([
+        {"timestamp": BASE.isoformat(), "service": "billing-worker-1", "level": "error",
+         "message": "Disk quota exceeded for tenant 4411 on volume vol-88af21"},
+        {"timestamp": (BASE + timedelta(seconds=5)).isoformat(), "service": "billing-worker-2", "level": "error",
+         "message": "Disk quota exceeded for tenant 9020 on volume vol-12cc90"},
+        {"timestamp": (BASE + timedelta(seconds=6)).isoformat(), "service": "search-indexer", "level": "error",
+         "message": "Index shard rebalance failed"},
+    ], source="api")
+    incidents = analyse(store.events(), store.topology, now=NOW)
+    grouped = next(i for i in incidents if i["service_count"] == 2)
+    assert grouped["correlation"]["links"]["pattern"] == 1
+    assert len(incidents) == 2
+
+
+def test_correlation_explains_links():
+    main = max(run("db_pool_exhaustion"), key=lambda i: i["alert_count"])
+    corr = main["correlation"]
+    assert corr["links"]["dependency"] > 0 and corr["links"]["same_service"] > 0
+    assert sum(corr["links"].values()) == main["event_count"] - 1  # spanning links
+    assert any("dependency graph" in line for line in corr["explanation"])
+
+
 def test_log_line_formats():
     a = parse_log_line("2026-11-09T10:00:01Z ERROR [auth-service] Login failed: db timeout")
     b = parse_log_line("2026-11-09 10:00:01,123 WARN payment-service: Transaction TXN-1 failed")

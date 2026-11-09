@@ -13,7 +13,7 @@ J.A.R.V.I.S. collects events from several sources and works out which ones are c
 | Requirement | Implementation |
 |---|---|
 | Multiple data sources | REST API (`POST /api/events`), log file upload (JSON lines, plain text, logfmt), simulated live payment platform |
-| Event correlation | Union-find over events that fall within a time window **and** are related (same service, shared `trace_id`/`request_id`/`host`, or connected in the service dependency graph) |
+| Event correlation | Uses **timestamps** (a sliding time window), **common services** (same service or connected in the dependency graph, plus shared `trace_id`/`request_id`/`host`) and **activity patterns** (the same error signature on different services once ids and numbers are stripped). Union-find merges the linked events, and the reason for every link is recorded and shown |
 | Root cause detection | Explainable scoring of every candidate service: **coverage**, **precedence**, **depth** and **causal signal** |
 | Impact analysis | Affected services, at-risk services (dependents not yet alerting), business capabilities, failed logins, failed transactions, revenue at risk, users affected |
 | Incident timeline | Ordered events plus the propagation path from the root to each symptom, animated on the service map |

@@ -8,6 +8,13 @@ const FACTORS = [
   ['depth', '1 when none of its own dependencies are failing'],
   ['causal', 'Emitted a cause-level signal such as pool exhaustion, OOM or a deploy'],
 ]
+const LINK_LABEL = { dependency: 'Common services', same_service: 'Same service', shared_id: 'Shared trace or host', pattern: 'Activity pattern' }
+const LINK_INFO = {
+  dependency: 'Linked because the services are connected in the dependency graph',
+  same_service: 'Repeated alerts from the same service',
+  shared_id: 'Events share a trace, request or host id',
+  pattern: 'Different services reported the same error signature',
+}
 const PRIORITY = { immediate: 'Immediate', short_term: 'Short term', long_term: 'Long term' }
 
 function ConfidenceRing({ value }) {
@@ -81,6 +88,13 @@ export default function IncidentDetail({ incident }) {
           </div>
           <h2 id="incident-title">{incident.title}</h2>
           <p className="summary">{incident.summary}</p>
+          <div className="correlation" aria-label="Event correlation">
+            <span className="corr-label">Event correlation</span>
+            <span className="chip">{incident.event_count} events in {Math.round(incident.correlation.span_seconds)}s</span>
+            {Object.entries(incident.correlation.links).filter(([, n]) => n > 0).map(([reason, n]) => (
+              <span key={reason} className="chip" title={LINK_INFO[reason]}>{LINK_LABEL[reason]} · {n}</span>
+            ))}
+          </div>
         </div>
         <div className="row">
           <Button variant="quiet" loading={busy === 'view'} onClick={viewReport}>View report</Button>
@@ -90,7 +104,7 @@ export default function IncidentDetail({ incident }) {
 
       <div className="detail-grid">
         <section className="panel">
-          <div className="panel-head"><h3 className="panel-title">Root cause</h3></div>
+          <div className="panel-head"><h3 className="panel-title">Root cause detection</h3></div>
           <div className="rc-head">
             <ConfidenceRing value={rc.confidence} />
             <div>
@@ -124,14 +138,14 @@ export default function IncidentDetail({ incident }) {
         </section>
 
         <section className="panel">
-          <div className="panel-head"><h3 className="panel-title">Impact</h3></div>
+          <div className="panel-head"><h3 className="panel-title">Impact analysis</h3></div>
           <div className="tiles">
             <div className="tile"><div className="tile-v">{fmtNum(m.users_affected)}</div><div className="tile-l">Users affected</div></div>
             <div className="tile"><div className="tile-v">{fmtNum(m.failed_logins)}</div><div className="tile-l">Failed logins</div></div>
             <div className="tile"><div className="tile-v">{fmtNum(m.failed_transactions)}</div><div className="tile-l">Failed transactions</div></div>
             <div className="tile"><div className="tile-v">{fmtMoney(m.revenue_at_risk)}</div><div className="tile-l">Revenue at risk</div></div>
           </div>
-          <h4 className="sub">Affected services</h4>
+          <h4 className="sub">Affected services and applications</h4>
           <ul className="svc-list">
             {incident.impact.affected_services.map((s) => (
               <li key={s.service}>
@@ -152,7 +166,7 @@ export default function IncidentDetail({ incident }) {
 
         <section className="panel">
           <div className="panel-head">
-            <h3 className="panel-title">Timeline</h3>
+            <h3 className="panel-title">Incident timeline</h3>
             <label className="toggle"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show all {incident.timeline.events.length} events</label>
           </div>
           <div className="propagation" aria-label="Failure propagation">
@@ -178,7 +192,7 @@ export default function IncidentDetail({ incident }) {
         </section>
 
         <section className="panel">
-          <div className="panel-head"><h3 className="panel-title">Recommendations</h3></div>
+          <div className="panel-head"><h3 className="panel-title">Smart recommendations</h3></div>
           <ol className="recs">
             {incident.recommendations.map((r, i) => (
               <li key={i}>

@@ -5,6 +5,8 @@ import IncidentDetail, { DetailSkeleton } from './IncidentDetail.jsx'
 import { BrandMark, Button, Skeleton, useBusy } from './ui.jsx'
 
 const POLL_MS = 1500
+
+export const sourceLabel = (s) => (s === 'api' ? 'API' : s === 'simulator' ? 'Simulated live' : s.startsWith('log:') ? `Log file: ${s.slice(4)}` : s)
 const REPO_URL = 'https://github.com/Auritras/Software-Track-NITS-Hacks-9.0'
 
 function useToast() {
@@ -109,7 +111,7 @@ export default function App() {
           <BrandMark />
           <div>
             <h1>J.A.R.V.I.S.</h1>
-            <div className="tagline">Incident correlation and root-cause analysis</div>
+            <div className="tagline">Justified Analysis, Reasoning &amp; Visualization of Incident Systems</div>
           </div>
         </div>
         <div className="controls">
@@ -149,17 +151,17 @@ export default function App() {
         <div className="stat wide">
           <div className="sources">
             {!loaded && <Skeleton width="60%" />}
-            {loaded && Object.entries(stats?.sources || {}).map(([k, v]) => <span key={k} className="chip">{k} · {v}</span>)}
+            {loaded && Object.entries(stats?.sources || {}).map(([k, v]) => <span key={k} className="chip">{sourceLabel(k)} · {v}</span>)}
             {loaded && !Object.keys(stats?.sources || {}).length && <span className="muted small">No data received yet</span>}
           </div>
-          <div className="stat-l">Data sources</div>
+          <div className="stat-l">Data sources: APIs, uploaded log files, simulated live data</div>
         </div>
       </div>
 
       <div className="main-grid">
         <section className="panel" aria-labelledby="map-title">
           <div className="panel-head">
-            <h2 className="panel-title" id="map-title">Service dependency map</h2>
+            <h2 className="panel-title" id="map-title">Service connections</h2>
             <div className="legend">
               <span><i className="lg healthy" />Healthy</span><span><i className="lg at_risk" />At risk</span>
               <span><i className="lg degraded" />Degraded</span><span><i className="lg failing" />Failing</span>
@@ -173,7 +175,7 @@ export default function App() {
 
         <section className="panel incidents-panel" aria-labelledby="incidents-title">
           <div className="panel-head">
-            <h2 className="panel-title" id="incidents-title">Incidents</h2>
+            <h2 className="panel-title" id="incidents-title">Related incidents</h2>
             <span className="muted small">{incidents.length} total</span>
           </div>
           {!loaded && <div className="incident-list">{[0, 1, 2].map((i) => <Skeleton key={i} kind="block" />)}</div>}
@@ -199,7 +201,7 @@ export default function App() {
       <section className="panel" aria-labelledby="stream-title">
         <div className="panel-head">
           <div className="row">
-            <h2 className="panel-title" id="stream-title">Event stream</h2>
+            <h2 className="panel-title" id="stream-title">Collected events</h2>
             {serviceFilter && (
               <span className="chip">{serviceFilter}<button type="button" className="x" onClick={() => setServiceFilter(null)} aria-label="Clear service filter">×</button></span>
             )}
@@ -213,7 +215,7 @@ export default function App() {
               {shownEvents.slice(0, 80).map((e) => (
                 <tr key={e.id} className={e.severity}>
                   <td>{fmtTime(e.timestamp)}</td>
-                  <td className="small">{e.source}</td>
+                  <td className="small">{sourceLabel(e.source)}</td>
                   <td>{e.service}</td>
                   <td><span className={`badge ${e.severity}`}>{e.severity}</span></td>
                   <td className="small">{e.type_label}</td>
@@ -228,7 +230,7 @@ export default function App() {
       </section>
 
       <footer className="foot">
-        <span>J.A.R.V.I.S. · NITS Hacks 9.0 Software Track · Problem Statement 1 · correlation window {stats?.window_seconds ?? 120}s</span>
+        <span>J.A.R.V.I.S. · NITS Hacks 9.0 Software Track · Problem Statement 1 · Intelligent Systems, AI, Distributed Systems</span>
         <nav aria-label="Project links">
           <a href={REPO_URL} target="_blank" rel="noreferrer">GitHub repository</a>
           <a href="/docs" target="_blank" rel="noreferrer">API documentation</a>
