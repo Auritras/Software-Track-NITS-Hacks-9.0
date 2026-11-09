@@ -73,6 +73,39 @@ async def upload_logs(file: UploadFile = File(...)):
     return {"accepted": len(added), "skipped": skipped, "filename": file.filename}
 
 
+def _alertmanager_service(labels: dict[str, Any]) -> str:
+    for key in ("service", "app", "job", "container", "deployment"):
+        if labels.get(key):
+            return str(labels[key])
+    instance = str(labels.get("instance") or "")
+    return instance.split(":")[0] or "unknown-service"
+
+
+@app.post("/api/integrations/alertmanager")
+def alertmanager_webhook(payload: dict[str, Any]):
+    """Prometheus Alertmanager webhook receiver: point an Alertmanager `webhook_config` at this URL."""
+    alerts = payload.get("alerts")
+    if not isinstance(alerts, list):
+        raise HTTPException(400, "Expected an Alertmanager webhook payload with an 'alerts' list")
+    raws = []
+    for alert in alerts:
+        labels = {**(payload.get("commonLabels") or {}), **(alert.get("labels") or {})}
+        notes = {**(payload.get("commonAnnotations") or {}), **(alert.get("annotations") or {})}
+        name = labels.get("alertname", "Alert")
+        summary = notes.get("summary") or notes.get("description") or name
+        resolved = alert.get("status") == "resolved"
+        raws.append({
+            "timestamp": alert.get("endsAt") if resolved else alert.get("startsAt"),
+            "service": _alertmanager_service(labels),
+            "level": "info" if resolved else labels.get("severity", "warning"),
+            "message": f"{'Resolved: ' if resolved else ''}{name}: {summary}",
+            "attributes": {"alertname": name, "fingerprint": alert.get("fingerprint"),
+                           "host": labels.get("instance"), "labels": labels},
+        })
+    added = store.add_raw(raws, source="alertmanager")
+    return {"accepted": len(added), "ids": [e.id for e in added]}
+
+
 @app.get("/api/scenarios")
 def scenarios():
     return [{"id": k, "name": v["name"], "description": v["description"]} for k, v in simulator.SCENARIOS.items()]

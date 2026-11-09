@@ -1,7 +1,20 @@
 import React, { useMemo } from 'react'
 
 const W = 1000
-const NODE_W = 136
+const NODE_W = 144
+const LABEL_X = 28
+const LABEL_MAX_W = NODE_W - LABEL_X - 10 // room for the label inside the box
+const LABEL_SIZE = 13
+const CHAR_W = 0.6 // average glyph width of the bold label font, as a fraction of font size
+
+/** Fit a label inside its node: shrink the font down to 10px, then truncate with an ellipsis. */
+function fitLabel(label) {
+  const natural = label.length * LABEL_SIZE * CHAR_W
+  if (natural <= LABEL_MAX_W) return { text: label, size: LABEL_SIZE }
+  const size = Math.max(10, (LABEL_SIZE * LABEL_MAX_W) / natural)
+  const maxChars = Math.floor(LABEL_MAX_W / (size * CHAR_W))
+  return { text: label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label, size }
+}
 const NODE_H = 48
 const TIER_GAP = 88
 const TOP = 32
@@ -93,8 +106,11 @@ export default function ServiceMap({ topology, incident, onSelectService, select
               <rect className="node-shadow" x={3} y={3} width={NODE_W} height={NODE_H} rx={10} />
               <rect className="node-box" width={NODE_W} height={NODE_H} rx={10} />
               <circle className="node-dot" cx={16} cy={NODE_H / 2} r={4} />
-              <text className="node-label" x={28} y={21}>{n.label}</text>
-              <text className="node-kind" x={28} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
+              {(() => {
+                const { text, size } = fitLabel(n.label)
+                return <text className="node-label" x={LABEL_X} y={21} style={{ fontSize: size }}>{text}</text>
+              })()}
+              <text className="node-kind" x={LABEL_X} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
               {isRoot && (
                 <g transform={`translate(${NODE_W / 2 - 40}, -12)`}>
                   <rect className="root-tag" width={80} height={18} rx={9} />

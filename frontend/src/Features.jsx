@@ -41,7 +41,7 @@ export function BreakPanel({ topology, service, onServiceChange, streaming, onIn
           </select>
         </label>
         <Button variant="primary" onClick={inject} loading={busy === 'inject' || streaming} disabled={!fault}>
-          {streaming ? 'Failure in progress' : `Break ${label}`}
+          {streaming ? 'Simulation running…' : `Break ${label}`}
         </Button>
       </div>
     </section>

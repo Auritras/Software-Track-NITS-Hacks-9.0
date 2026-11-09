@@ -237,9 +237,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* kinetic "ROOT CAUSE FOUND!" burst */
 .burst-wrap { position: absolute; top: -22px; right: 16px; z-index: 2; filter: drop-shadow(3px 3px 0 var(--ink)); pointer-events: none; }
 .burst { display: inline-block;
-  font-family: var(--comic); font-size: 22px; letter-spacing: 0.04em; line-height: 1; color: var(--ink);
-  padding: 20px 28px; background: var(--yellow);
-  clip-path: polygon(50% 0%, 61% 18%, 82% 6%, 78% 30%, 100% 34%, 84% 52%, 98% 72%, 74% 72%, 76% 96%, 58% 82%, 44% 100%, 38% 80%, 16% 92%, 20% 68%, 0% 62%, 16% 46%, 4% 24%, 28% 26%, 26% 4%, 42% 16%);
+  font-family: var(--comic); font-size: 20px; letter-spacing: 0.04em; line-height: 1; color: var(--ink);
+  padding: 24px 46px; white-space: nowrap; background: var(--yellow);
+  clip-path: polygon(50% 0%, 61% 18%, 82% 6%, 78% 30%, 100% 34%, 92% 52%, 98% 72%, 74% 72%, 76% 96%, 58% 82%, 44% 100%, 38% 80%, 16% 92%, 20% 68%, 0% 62%, 8% 46%, 4% 24%, 28% 26%, 26% 4%, 42% 16%);
   animation: burst 900ms var(--ease) both; }
 .burst span { display: inline-block; transform: rotate(-6deg); }
 
@@ -388,3 +388,11 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 }
 
 .main-grid > .panel { align-self: start; }
+
+/* judge-mode intro */
+.intro { display: flex; justify-content: space-between; align-items: center; gap: var(--s-5); flex-wrap: wrap; background: var(--yellow-soft); }
+.intro-copy { flex: 1 1 420px; display: flex; flex-direction: column; gap: var(--s-2); }
+.intro h2 { font-family: var(--display); font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 400; letter-spacing: 0.02em; }
+.intro-steps { margin: var(--s-1) 0 0; padding-left: var(--s-5); display: grid; grid-template-columns: repeat(3, auto); justify-content: start; column-gap: var(--s-6); row-gap: var(--s-1); font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.intro-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+@media (max-width: 900px) { .intro-steps { grid-template-columns: 1fr; } }
