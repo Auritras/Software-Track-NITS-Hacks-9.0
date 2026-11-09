@@ -98,7 +98,7 @@ select { padding-right: var(--s-6); cursor: pointer; appearance: none;
   background-repeat: no-repeat; background-position: right var(--s-3) center; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); cursor: pointer; white-space: nowrap; }
 .btn:hover:not(:disabled), select:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
-.btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.btn:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--ink); transition-duration: 60ms; }
 .btn:disabled { cursor: default; opacity: 0.65; }
 .btn[aria-busy='true'] { opacity: 1; }
 .btn.primary { background: var(--pink); }
@@ -536,3 +536,18 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 @media (prefers-reduced-motion: reduce) {
   .packet, .chip-pile, .blast, .sev-flash { display: none; }
 }
+
+/* comic press: sink into the shadow, spring back on release */
+.btn { transition: transform 240ms cubic-bezier(0.3, 1.6, 0.5, 1), box-shadow 240ms cubic-bezier(0.3, 1.6, 0.5, 1), background-color var(--dur) var(--ease); }
+
+/* scenario switch: a comic page turn sweeps across the dashboard */
+.page-turn { position: fixed; inset: 0; z-index: 45; pointer-events: none;
+  background-color: var(--paper); background-image: radial-gradient(rgba(17, 17, 17, 0.16) 1.2px, transparent 1.6px); background-size: 9px 9px;
+  border-left: 4px solid var(--ink); box-shadow: -8px 0 0 var(--ink);
+  animation: page-turn 460ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+@keyframes page-turn {
+  0% { clip-path: inset(0 0 0 100%); }
+  45% { clip-path: inset(0 0 0 0); }
+  100% { clip-path: inset(0 100% 0 0); }
+}
+@media (prefers-reduced-motion: reduce) { .page-turn { display: none; } }

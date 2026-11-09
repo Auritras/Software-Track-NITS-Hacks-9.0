@@ -61,6 +61,7 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false)
   const [replayT, setReplayT] = useState(null)
   const [sevFlash, setSevFlash] = useState(null)
+  const [pageTurn, setPageTurn] = useState(0)
   const seenSev1 = useRef(null)
 
   // Camera follow: when a demo starts, glide to the map; when the stream ends, glide to the root cause.
@@ -290,7 +291,7 @@ export default function App() {
         </div>
         <div className="controls">
           <label className="sr-only" htmlFor="scenario">Scenario</label>
-          <select id="scenario" value={scenario} onChange={(e) => setScenario(e.target.value)} title={description}>
+          <select id="scenario" value={scenario} onChange={(e) => { setScenario(e.target.value); setPageTurn((n) => n + 1); clearTimeout(window.__pageTurnT); window.__pageTurnT = setTimeout(() => setPageTurn(0), 700) }} title={description}>
             {scenarios.length === 0 && <option value="db_pool_exhaustion">Loading scenarios…</option>}
             {scenarios.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -453,6 +454,7 @@ export default function App() {
         </div>
       )}
       <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
+      {pageTurn > 0 && <div className="page-turn" key={pageTurn} aria-hidden="true" onAnimationEnd={() => setPageTurn(0)} />}
       {sevFlash && (
         <div className="sev-flash" aria-hidden="true" key={sevFlash}>
           <div className="sev-bubble">SEV1!</div>
