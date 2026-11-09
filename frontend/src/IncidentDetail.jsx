@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, fmtMoney, fmtNum, fmtTime } from './api.js'
-import { Button, Skeleton, useBusy } from './ui.jsx'
+import { Button, CountUp, Skeleton, useBusy } from './ui.jsx'
 
 const FACTORS = [
   ['coverage', 'Share of affected services that depend on this one'],
@@ -45,7 +45,7 @@ export function DetailSkeleton() {
   )
 }
 
-export default function IncidentDetail({ incident }) {
+export default function IncidentDetail({ incident, replayT = null }) {
   const [showAll, setShowAll] = useState(false)
   const [report, setReport] = useState(null)
   const [busy, run] = useBusy()
@@ -90,6 +90,11 @@ export default function IncidentDetail({ incident }) {
             <span className="muted small">Started {fmtTime(incident.started_at)} · {Math.round(incident.duration_seconds)}s</span>
           </div>
           <h2 id="incident-title">{incident.title}</h2>
+          <div className="collapse-line" key={`collapse-${incident.id}`} aria-label={`${incident.alert_count} alerts grouped into 1 incident`}>
+            <span className="c-from"><CountUp value={incident.alert_count} duration={900} /> alerts</span>
+            <span className="c-arrow" aria-hidden="true">→</span>
+            <span className="c-to">1 incident</span>
+          </div>
           <p className="summary">{incident.summary}</p>
           <div className="correlation" aria-label="Event correlation">
             <span className="corr-label">Event correlation</span>
@@ -185,7 +190,7 @@ export default function IncidentDetail({ incident }) {
           </div>
           <ol className="timeline">
             {events.map((e) => (
-              <li key={e.id} className={`${e.severity} ${e.is_root ? 'is-root' : ''}`}>
+              <li key={e.id} className={`${e.severity} ${e.is_root ? 'is-root' : ''} ${replayT !== null && e.offset_seconds > replayT ? 'future' : ''}`}>
                 <span className="t">T+{Math.round(e.offset_seconds)}s</span>
                 <span className="dot" aria-hidden="true" />
                 <div>

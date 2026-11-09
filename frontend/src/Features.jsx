@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from './api.js'
-import { Button, Skeleton, useBusy } from './ui.jsx'
+import { Button, CountUp, Skeleton, useBusy } from './ui.jsx'
 
 /** "Break anything": inject a failure into any service and watch J.A.R.V.I.S. diagnose it. */
 export function BreakPanel({ topology, service, onServiceChange, streaming, onInjected, onError }) {
@@ -73,13 +73,27 @@ export function AccuracyPanel() {
         <div className="acc-layout fade-in">
           <div className="acc-headline">
             <div className="acc-big">
-              <div className="acc-v hero">{pct(data.top1_accuracy)}</div>
+              <div className="acc-v hero"><CountUp value={data.top1_accuracy} decimals={1} suffix="%" /></div>
               <div className="acc-l">Root cause correct (top 1)</div>
             </div>
-            <div className="acc-big">
-              <div className="acc-v secondary">{pct(data.top3_accuracy)}</div>
-              <div className="acc-l">Root cause in top 3</div>
+            <div className="acc-pair">
+              <div className="acc-big">
+                <div className="acc-v secondary"><CountUp value={data.top3_accuracy} decimals={1} suffix="%" /></div>
+                <div className="acc-l">Root cause in top 3</div>
+              </div>
+              {data.throughput?.events_per_second && (
+                <div className="acc-big" title={`${data.throughput.events.toLocaleString('en-IN')} events analysed end to end in ${data.throughput.analysis_ms} ms on this server`}>
+                  <div className="acc-v secondary"><CountUp value={data.throughput.events_per_second} /></div>
+                  <div className="acc-l">Events analysed per second</div>
+                </div>
+              )}
             </div>
+            {data.throughput?.events_per_second && (
+              <p className="panel-copy">
+                Speed: {data.throughput.events.toLocaleString('en-IN')} events from {data.throughput.outages} back-to-back outages were correlated, ranked and
+                explained in {data.throughput.analysis_ms} ms, measured live on this server.
+              </p>
+            )}
             <p className="panel-copy">
               {data.trials} random failures across {data.root_candidates} services, completed in {data.duration_ms} ms.
               Confidence averages {data.avg_confidence_correct}% when correct and {data.avg_confidence_wrong}% when wrong,

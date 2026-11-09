@@ -107,4 +107,39 @@ def run_benchmark(trials: int = 300, seed: int = 2026) -> dict:
         ],
         "misses": [{k: r[k] for k in ("root", "fault", "condition", "predicted", "confidence")} for r in wrong[:8]],
         "duration_ms": round(elapsed * 1000),
+        "throughput": measure_throughput(seed=seed),
+    }
+
+
+def measure_throughput(incidents: int = 60, seed: int = 2026, repeats: int = 3) -> dict:
+    """Time the full analysis (correlate + rank + impact + timeline + recommend) on one large
+    event stream: ``incidents`` random failures spaced 10 minutes apart, with background noise."""
+    topo = Topology()
+    reverse_targets = {callee for callees in topo.deps.values() for callee in callees}
+    roots = sorted(reverse_targets)
+    rng = random.Random(seed)
+    base = datetime(2026, 11, 9, 0, 0, tzinfo=timezone.utc)
+    raws = []
+    for k in range(incidents):
+        root = rng.choice(roots)
+        fault = rng.choice(faults_for(topo, root))[0]
+        plan = plan_fault(topo, root, fault, rng, noise=3)
+        start = base + timedelta(minutes=10 * k)
+        raws += [{**raw, "timestamp": (start + timedelta(seconds=off)).isoformat()} for off, raw in plan.steps]
+    store = EventStore(topology=topo, max_events=len(raws) + 1)
+    store.add_raw(raws, source="benchmark")
+    events = store.events()
+    now = base + timedelta(minutes=10 * incidents + 10)
+    best = float("inf")
+    found = 0
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        found = len(analyse(events, topo, now=now))
+        best = min(best, time.perf_counter() - t0)
+    return {
+        "events": len(events),
+        "outages": incidents,
+        "incidents_found": found,
+        "analysis_ms": round(best * 1000, 1),
+        "events_per_second": round(len(events) / best) if best else None,
     }
