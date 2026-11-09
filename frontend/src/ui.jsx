@@ -35,6 +35,7 @@ export function Button({ loading = false, variant = '', size = '', children, dis
       className={`btn ${variant} ${size}`.trim()}
       disabled={disabled || loading}
       aria-busy={loading}
+      aria-label={typeof children === 'string' ? children : undefined}
       {...props}
     >
       {loading && <span className="spinner" aria-hidden="true" />}

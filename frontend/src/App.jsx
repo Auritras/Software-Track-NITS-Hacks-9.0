@@ -26,8 +26,17 @@ function useToast() {
 }
 
 function Stat({ label, value, tone = '', loading, decimals = 0, suffix = '' }) {
+  const [bump, setBump] = useState(false)
+  const prev = useRef(value)
+  useEffect(() => {
+    if (prev.current === value) return
+    prev.current = value
+    setBump(true)
+    const t = setTimeout(() => setBump(false), 320)
+    return () => clearTimeout(t)
+  }, [value])
   return (
-    <div className={`stat ${tone}`}>
+    <div className={`stat ${tone} ${bump ? 'bump' : ''}`}>
       {loading ? <Skeleton kind="num" /> : <div className="stat-v"><CountUp value={value} decimals={decimals} suffix={suffix} /></div>}
       <div className="stat-l">{label}</div>
     </div>
@@ -56,11 +65,20 @@ export default function App() {
   // Any manual scroll, touch or key press hands control back to the user.
   const following = useRef(false)
   const sawRunning = useRef(false)
+  const glideTimer = useRef()
   const glideTo = (selector, block = 'start') => {
-    const el = document.querySelector(selector)
-    if (!el) return
+    clearTimeout(glideTimer.current) // never run two glides at once
+    const go = (behavior) => {
+      const el = document.querySelector(selector)
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const top = block === 'center' ? r.top + window.scrollY - Math.max(16, (window.innerHeight - r.height) / 2) : r.top + window.scrollY - 16
+      window.scrollTo({ top: Math.max(0, top), behavior })
+    }
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block })
+    go(smooth ? 'smooth' : 'auto')
+    // content can grow while scrolling; re-check once it has settled
+    glideTimer.current = setTimeout(() => { if (following.current || block === 'center') go('auto') }, 900)
   }
   const startFollow = useCallback(() => {
     following.current = true
@@ -128,10 +146,16 @@ export default function App() {
     }
   })
 
-  const simulateLive = () => act('live', () => { startFollow(); return api.simulate(scenario, 'live', speed) },
+  const simulateLive = () => act('live', async () => { await freshRun(); startFollow(); return api.simulate(scenario, 'live', speed) },
     (r) => `Streaming scenario live for about ${Math.round(r.duration_seconds)} seconds`)
   const inject = () => act('instant', () => api.simulate(scenario, 'instant', speed),
     (r) => `Injected ${r.accepted} events`)
+  // Every live run starts from a clean slate so each failure gets its own reveal (undoable).
+  const freshRun = async () => {
+    const r = await api.reset()
+    setSelectedId(null); setDetail(null)
+    return r
+  }
   const undoReset = () => act('undo', async () => { hideToast(); return api.undoReset() }, (r) => `Restored ${r.restored} events`)
   const reset = () => run('reset', async () => {
     try {
@@ -141,7 +165,7 @@ export default function App() {
       await refresh()
     } catch (e) { showToast(e.message, 'err') }
   })
-  const breakService = (service, fault) => act('break', () => { startFollow(); return api.injectFault(service, fault, 'live', 1) },
+  const breakService = (service, fault) => act('break', async () => { await freshRun(); startFollow(); return api.injectFault(service, fault, 'live', 2) },
     (r) => `${topology?.nodes.find((n) => n.id === service)?.label || service} broken. Failure spreading to ${r.affected.length - 1} dependent services.`)
   const pushAlert = () => act('push', () => api.sendEvent({
     service: 'api-gateway', level: 'warning', message: 'p95 latency 1.9s on /api/v1/accounts',
@@ -198,6 +222,7 @@ export default function App() {
     list.push(
       { id: 'upload', group: 'Data', label: 'Upload a log file', run: () => fileRef.current?.click() },
       { id: 'push', group: 'Data', label: 'Push a sample alert via the API', run: pushAlert },
+      { id: 'inject', group: 'Data', label: 'Inject the selected scenario instantly', run: inject },
       { id: 'reset', group: 'Data', label: 'Reset all data (can be undone)', run: reset },
     )
     return list
@@ -241,11 +266,9 @@ export default function App() {
           <Button variant="primary" className="btn primary sim-btn" onClick={simulateLive} loading={busy === 'live' || streaming}>
             {streaming ? `Streaming ${sim.emitted} of ${sim.total}` : 'Simulate live'}
           </Button>
-          <Button onClick={inject} loading={busy === 'instant'}>Inject instantly</Button>
           <span className="divider" aria-hidden="true" />
           <Button onClick={() => fileRef.current?.click()} loading={busy === 'upload'}>Upload logs</Button>
           <input ref={fileRef} type="file" accept=".log,.txt,.jsonl,.json" hidden onChange={upload} />
-          <Button variant="quiet" onClick={pushAlert} loading={busy === 'push'} title="Sends a sample alert to POST /api/events">Push API alert</Button>
           <Button variant="quiet danger" onClick={reset} loading={busy === 'reset'}>Reset</Button>
           <Button onClick={() => setCmdOpen(true)} title="Open the command menu">
             Commands <span className="kbd-hint"><kbd>{MOD}</kbd> <kbd>K</kbd></span>
@@ -316,7 +339,7 @@ export default function App() {
           service={serviceFilter}
           onServiceChange={setServiceFilter}
           streaming={streaming}
-          onInjected={(text) => { startFollow(); showToast(text); refresh() }}
+          onBreak={breakService}
           onError={(text) => showToast(text, 'err')}
         />
         <section className="panel incidents-panel" aria-labelledby="incidents-title">

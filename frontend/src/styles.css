@@ -427,3 +427,48 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .node.failing .jolt { animation: jolt 380ms cubic-bezier(0.3, 1.6, 0.5, 1); }
 @keyframes jolt { 25% { transform: translateX(-3px) rotate(-1.5deg); } 55% { transform: translateX(3px) rotate(1.5deg); } 80% { transform: translateX(-1px); } }
 .sim-btn { min-width: 196px; }
+
+/* ---- option A polish ---- */
+/* root-cause reveal: stamp the tag in, spotlight the root for a moment */
+.root-stamp { transform-box: fill-box; transform-origin: center; animation: stamp 620ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+@keyframes stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-12deg); } 60% { opacity: 1; transform: scale(0.92) rotate(2deg); } 100% { transform: scale(1) rotate(0); } }
+.service-map .node { transition: opacity 300ms var(--ease); }
+.service-map.spotlight .node:not(.root) { opacity: 0.22; }
+.service-map.spotlight .edge:not(.hot) { opacity: 0.25; }
+.service-map.spotlight .node.root .node-box { filter: drop-shadow(0 0 10px rgba(255, 130, 183, 0.95)); }
+
+/* bigger, readable jolt */
+.node.failing .jolt { animation: jolt 520ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes jolt { 15% { transform: translateX(-6px) rotate(-2.5deg) scale(1.04); } 40% { transform: translateX(6px) rotate(2.5deg) scale(1.04); } 65% { transform: translateX(-3px) rotate(-1deg); } 85% { transform: translateX(2px); } }
+
+/* health breathing: degraded pulses slowly, failing faster */
+.node.degraded .node-dot, .node.at_risk .node-dot { animation: breathe 2.4s ease-in-out infinite; }
+.node.failing .node-dot { animation: breathe 1.1s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* stat card bump on change */
+.stat.bump { animation: bump 320ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes bump { 40% { transform: translateY(-3px) scale(1.02); } }
+
+/* stats grid: never leave an empty slot */
+@media (max-width: 1100px) {
+  .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .stat.wide { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats .stat:nth-child(5) { grid-column: 1 / -1; }
+}
+
+/* evidence ticks in one by one, as if reasoning live */
+.evidence.ticks { list-style: none; padding-left: 0; }
+.evidence.ticks li { display: grid; grid-template-columns: 20px 1fr; gap: var(--s-2); align-items: start; opacity: 0; animation: rise 300ms var(--ease) both; animation-delay: calc(var(--i) * 380ms + 200ms); }
+.tick { width: 18px; height: 18px; margin-top: 1px; }
+.tick path { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 380ms var(--ease) forwards; animation-delay: calc(var(--i) * 380ms + 320ms); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+/* copy command */
+.cmd-wrap { position: relative; display: flex; gap: var(--s-2); align-items: flex-start; margin-top: var(--s-2); }
+.cmd-wrap .cmd { margin-top: 0; flex: 1; }
+.copy { position: relative; flex: none; }
+.copied { position: absolute; bottom: calc(100% + 6px); right: 0; white-space: nowrap; background: var(--yellow); border: 1.5px solid var(--ink); border-radius: 8px; padding: 2px 8px; font-size: var(--fs-xs); font-weight: 700; box-shadow: var(--shadow-sm); animation: pop 300ms var(--ease) both; }
