@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,9 @@ from pydantic import BaseModel
 
 import os
 import random
+import re
+import threading
+from collections import OrderedDict
 
 from . import faults, simulator
 from .benchmark import run_benchmark
@@ -29,15 +32,47 @@ store = EventStore()
 runner = simulator.SimulationRunner(store)
 
 
-def seed_demo_data() -> None:
+SEED_DEMO = os.environ.get("JARVIS_SEED_DEMO", "1") != "0"
+
+
+def seed_demo_data(target: EventStore | None = None) -> None:
     """Pre-load the headline scenario so the dashboard never opens empty (disable with JARVIS_SEED_DEMO=0)."""
     steps = simulator.build("db_pool_exhaustion")
     base = datetime.now(timezone.utc) - timedelta(seconds=steps[-1][0] + 1)
-    store.add_raw(simulator.materialize("db_pool_exhaustion", base), source="simulator")
+    (target or store).add_raw(simulator.materialize("db_pool_exhaustion", base), source="simulator")
 
 
-if os.environ.get("JARVIS_SEED_DEMO", "1") != "0":
+if SEED_DEMO:
     seed_demo_data()
+
+# ---------------------------------------------------------------- per-visitor workspaces
+# Every browser sends a random X-Jarvis-Session id, and gets its own private store and
+# simulator, so visitors never see each other's data. Requests without an id (tests,
+# Alertmanager webhooks, curl) use the shared default workspace above.
+SESSION_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
+MAX_WORKSPACES = 200
+_workspaces: "OrderedDict[str, tuple[EventStore, simulator.SimulationRunner]]" = OrderedDict()
+_workspaces_lock = threading.Lock()
+
+
+def workspace(request: Request) -> tuple[EventStore, simulator.SimulationRunner]:
+    sid = request.headers.get("x-jarvis-session") or request.query_params.get("session")
+    if not sid or not SESSION_ID.fullmatch(sid):
+        return store, runner
+    with _workspaces_lock:
+        ws = _workspaces.get(sid)
+        if ws:
+            _workspaces.move_to_end(sid)
+            return ws
+        ws_store = EventStore()
+        if SEED_DEMO:
+            seed_demo_data(ws_store)
+        ws = (ws_store, simulator.SimulationRunner(ws_store))
+        _workspaces[sid] = ws
+        while len(_workspaces) > MAX_WORKSPACES:  # evict the least recently used
+            _, (_, old_runner) = _workspaces.popitem(last=False)
+            old_runner.stop()
+        return ws
 
 
 class SimulateRequest(BaseModel):
@@ -52,8 +87,9 @@ class SettingsRequest(BaseModel):
 
 # --- ingestion ----------------------------------------------------------------
 @app.post("/api/events")
-def ingest_events(payload: dict[str, Any] | list[dict[str, Any]]):
+def ingest_events(request: Request, payload: dict[str, Any] | list[dict[str, Any]]):
     """Source 1: push events/alerts over HTTP (single object, list, or {"events": [...]})."""
+    store, runner = workspace(request)
     if isinstance(payload, dict):
         raws = payload.get("events") if isinstance(payload.get("events"), list) else [payload]
     else:
@@ -63,8 +99,9 @@ def ingest_events(payload: dict[str, Any] | list[dict[str, Any]]):
 
 
 @app.post("/api/logs/upload")
-async def upload_logs(file: UploadFile = File(...)):
+async def upload_logs(request: Request, file: UploadFile = File(...)):
     """Source 2: upload a log file (JSON lines, plain text or logfmt)."""
+    store, runner = workspace(request)
     content = (await file.read()).decode("utf-8", errors="replace")
     raws, skipped = parse_log_text(content)
     if not raws:
@@ -82,8 +119,9 @@ def _alertmanager_service(labels: dict[str, Any]) -> str:
 
 
 @app.post("/api/integrations/alertmanager")
-def alertmanager_webhook(payload: dict[str, Any]):
+def alertmanager_webhook(request: Request, payload: dict[str, Any]):
     """Prometheus Alertmanager webhook receiver: point an Alertmanager `webhook_config` at this URL."""
+    store, runner = workspace(request)
     alerts = payload.get("alerts")
     if not isinstance(alerts, list):
         raise HTTPException(400, "Expected an Alertmanager webhook payload with an 'alerts' list")
@@ -112,8 +150,9 @@ def scenarios():
 
 
 @app.post("/api/simulate")
-def simulate(req: SimulateRequest):
+def simulate(request: Request, req: SimulateRequest):
     """Source 3: simulated live data from the payment platform."""
+    store, runner = workspace(request)
     if req.scenario not in simulator.SCENARIOS:
         raise HTTPException(404, f"Unknown scenario '{req.scenario}'")
     if req.mode == "instant":
@@ -132,15 +171,17 @@ class FaultRequest(BaseModel):
 
 
 @app.get("/api/faults")
-def fault_catalog():
+def fault_catalog(request: Request):
     """Which failures can be injected into each service (for "Break anything" mode)."""
+    store, runner = workspace(request)
     return {sid: [{"id": f, "label": label} for f, label in faults.faults_for(store.topology, sid)]
             for sid in store.topology.services}
 
 
 @app.post("/api/faults/inject")
-def inject_fault(req: FaultRequest):
+def inject_fault(request: Request, req: FaultRequest):
     """Break any service: the failure propagates through the real dependency graph."""
+    store, runner = workspace(request)
     if req.service not in store.topology.services:
         raise HTTPException(404, f"Unknown service '{req.service}'")
     options = [f for f, _ in faults.faults_for(store.topology, req.service)]
@@ -178,19 +219,22 @@ def benchmark_rerun(trials: int = 300):
 
 
 @app.post("/api/simulate/stop")
-def simulate_stop():
+def simulate_stop(request: Request):
+    store, runner = workspace(request)
     runner.stop()
     return runner.status
 
 
 @app.post("/api/reset")
-def reset():
+def reset(request: Request):
+    store, runner = workspace(request)
     runner.stop()
     return {"ok": True, "cleared": store.reset()}
 
 
 @app.post("/api/reset/undo")
-def undo_reset():
+def undo_reset(request: Request):
+    store, runner = workspace(request)
     restored = store.undo_reset()
     if not restored:
         raise HTTPException(409, "Nothing to restore")
@@ -198,7 +242,8 @@ def undo_reset():
 
 
 @app.post("/api/settings")
-def settings(req: SettingsRequest):
+def settings(request: Request, req: SettingsRequest):
+    store, runner = workspace(request)
     store.window_s = max(10.0, min(req.window_seconds, 3600.0))
     return {"window_seconds": store.window_s}
 
@@ -215,12 +260,14 @@ def _summary(inc: dict) -> dict:
 
 
 @app.get("/api/incidents")
-def list_incidents():
+def list_incidents(request: Request):
+    store, runner = workspace(request)
     return [_summary(i) for i in store.incidents()]
 
 
 @app.get("/api/incidents/{incident_id}")
-def get_incident(incident_id: str):
+def get_incident(request: Request, incident_id: str):
+    store, runner = workspace(request)
     inc = store.incident(incident_id)
     if not inc:
         raise HTTPException(404, "Incident not found")
@@ -228,7 +275,8 @@ def get_incident(incident_id: str):
 
 
 @app.get("/api/incidents/{incident_id}/report", response_class=PlainTextResponse)
-def get_report(incident_id: str):
+def get_report(request: Request, incident_id: str):
+    store, runner = workspace(request)
     inc = store.incident(incident_id)
     if not inc:
         raise HTTPException(404, "Incident not found")
@@ -237,7 +285,8 @@ def get_report(incident_id: str):
 
 
 @app.get("/api/events")
-def list_events(limit: int = 100, service: str | None = None, anomalies_only: bool = False):
+def list_events(request: Request, limit: int = 100, service: str | None = None, anomalies_only: bool = False):
+    store, runner = workspace(request)
     events = store.events()
     if service:
         events = [e for e in events if e.service == service]
@@ -248,7 +297,8 @@ def list_events(limit: int = 100, service: str | None = None, anomalies_only: bo
 
 
 @app.get("/api/topology")
-def topology():
+def topology(request: Request):
+    store, runner = workspace(request)
     data = store.topology.to_dict()
     health: dict[str, dict] = {}
     for inc in store.incidents():
@@ -269,7 +319,8 @@ def topology():
 
 
 @app.get("/api/stats")
-def stats():
+def stats(request: Request):
+    store, runner = workspace(request)
     events = store.events()
     incidents = store.incidents()
     alerts = sum(1 for e in events if e.is_anomaly)

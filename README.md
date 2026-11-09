@@ -70,6 +70,8 @@ Production mode: run `npm run build` in `frontend/`, then FastAPI serves the das
 
 Tests: `cd backend && pytest` (37 tests). They cover the scenarios, injected failures on 7 different services, the benchmark, the "why not" explanations, log parsing and the API.
 
+Every browser gets its own **private workspace** (a random `X-Jarvis-Session` id), so visitors never see each other's runs; each new workspace starts with the headline scenario loaded. Requests without an id, such as Alertmanager webhooks or curl, use a shared default workspace (send `?session=<id>` to target a specific one).
+
 The server loads the headline scenario at startup so the dashboard never opens empty. Set `JARVIS_SEED_DEMO=0` to disable this.
 
 ## Demo flow (under 2 minutes)

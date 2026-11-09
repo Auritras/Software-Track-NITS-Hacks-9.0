@@ -45,6 +45,16 @@ export function BreakPanel({ topology, service, onServiceChange, streaming, onBr
 
 const pct = (v) => `${Number(v).toFixed(1)}%`
 
+/** Flickers like a slot machine while the benchmark re-runs. */
+function SlotNumber() {
+  const [v, setV] = useState(90)
+  useEffect(() => {
+    const t = setInterval(() => setV(80 + Math.random() * 19.9), 70)
+    return () => clearInterval(t)
+  }, [])
+  return <span className="countup slot">{v.toFixed(1)}%</span>
+}
+
 /** Measured root-cause accuracy over random injected faults. */
 export function AccuracyPanel() {
   const [data, setData] = useState(null)
@@ -68,7 +78,7 @@ export function AccuracyPanel() {
         <div className="acc-layout fade-in">
           <div className="acc-headline">
             <div className="acc-big">
-              <div className="acc-v hero"><CountUp value={data.top1_accuracy} decimals={1} suffix="%" /></div>
+              <div className="acc-v hero">{busy === 'rerun' ? <SlotNumber /> : <CountUp value={data.top1_accuracy} decimals={1} suffix="%" />}</div>
               <div className="acc-l">Root cause correct (top 1)</div>
             </div>
             <div className="acc-pair">

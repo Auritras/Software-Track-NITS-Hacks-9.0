@@ -472,3 +472,67 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .cmd-wrap .cmd { margin-top: 0; flex: 1; }
 .copy { position: relative; flex: none; }
 .copied { position: absolute; bottom: calc(100% + 6px); right: 0; white-space: nowrap; background: var(--yellow); border: 1.5px solid var(--ink); border-radius: 8px; padding: 2px 8px; font-size: var(--fs-xs); font-weight: 700; box-shadow: var(--shadow-sm); animation: pop 300ms var(--ease) both; }
+
+/* ---- story animations ---- */
+/* 49 alerts collapse into one incident: chips pile up, then fly into "1 incident" */
+.collapse-line { position: relative; }
+.chip-pile { position: absolute; left: 0; top: 50%; width: 0; height: 0; pointer-events: none; }
+.alert-chip { position: absolute; left: 30px; top: -9px; width: 34px; height: 18px; border-radius: 999px; background: var(--pink); border: 1.5px solid var(--ink); opacity: 0;
+  animation: chip-fly 1100ms cubic-bezier(0.5, 0, 0.3, 1) both; animation-delay: calc(var(--i) * 35ms); }
+.alert-chip.warn { background: var(--yellow); }
+@keyframes chip-fly {
+  0% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(0.6); }
+  25% { opacity: 1; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1); }
+  85% { opacity: 1; transform: translate(190px, 0) rotate(0) scale(0.3); }
+  100% { opacity: 0; transform: translate(200px, 0) scale(0.1); }
+}
+.collapse-line .c-arrow { animation-delay: 1000ms; }
+.collapse-line .c-to { animation-delay: 1150ms; }
+
+/* SEV1 declared: a quick comic panel flash */
+.sev-flash { position: fixed; inset: 0; z-index: 50; pointer-events: none;
+  background-image: radial-gradient(rgba(255, 130, 183, 0.55) 2px, transparent 2.6px); background-size: 10px 10px;
+  animation: flash 900ms ease-out both; display: grid; place-items: center; }
+.sev-bubble { font-family: var(--comic); font-size: 72px; line-height: 1; padding: 24px 40px; background: var(--paper); border: 4px solid var(--ink); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  box-shadow: 6px 6px 0 var(--ink); transform: rotate(-6deg); animation: burst 700ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+@keyframes flash { 0% { opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* impact blast radius from the root cause */
+.blast { fill: none; stroke: var(--pink); stroke-width: 4; transform-box: fill-box; transform-origin: center; animation: blast 1400ms ease-out both; }
+@keyframes blast { 0% { transform: scale(0.4); opacity: 0.9; } 100% { transform: scale(14); opacity: 0; } }
+
+/* resolved stamp */
+.resolved-stamp { display: inline-block; font-family: var(--comic); font-size: 26px; letter-spacing: 0.06em; color: var(--ink); background: var(--blue);
+  border: 3px solid var(--ink); border-radius: 6px; padding: 4px 14px; box-shadow: var(--shadow-sm); transform: rotate(-4deg); margin-bottom: var(--s-2);
+  animation: stamp-in 600ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+@keyframes stamp-in { 0% { opacity: 0; transform: scale(2) rotate(-14deg); } 70% { opacity: 1; transform: scale(0.94) rotate(-3deg); } 100% { transform: scale(1) rotate(-4deg); } }
+
+/* hover chain: highlight dependencies and dependents */
+.service-map.chain .node:not(.in-chain) { opacity: 0.25; }
+.service-map.chain g:not(.in-chain) > .edge { opacity: 0.15; }
+.service-map .node, .service-map .edge { transition: opacity 150ms var(--ease); }
+
+/* healthy traffic packets */
+.packet { fill: var(--blue); stroke: var(--ink); stroke-width: 1; opacity: 0.8; }
+
+/* typewriter for the critical log line */
+.typewriter { font-family: var(--mono); font-size: var(--fs-xs); }
+.typewriter.done > span:first-child { background: linear-gradient(90deg, rgba(255, 130, 183, 0.55), rgba(255, 130, 183, 0.55)) no-repeat; background-size: 100% 60%; background-position: 0 90%; animation: marker 600ms var(--ease) both; }
+@keyframes marker { from { background-size: 0% 60%; } to { background-size: 100% 60%; } }
+.caret { animation: breathe 0.8s steps(2) infinite; }
+
+/* slot machine re-run */
+.countup.slot { filter: blur(0.4px); }
+
+/* command palette: blur + scale, staggered results */
+.cmdk-backdrop { backdrop-filter: blur(2px); }
+.cmdk { animation: palette-in 180ms var(--ease) both; }
+@keyframes palette-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.cmdk li { animation: rise 160ms var(--ease) both; }
+.cmdk li:nth-child(1) { animation-delay: 0ms; } .cmdk li:nth-child(2) { animation-delay: 20ms; } .cmdk li:nth-child(3) { animation-delay: 40ms; }
+.cmdk li:nth-child(4) { animation-delay: 60ms; } .cmdk li:nth-child(5) { animation-delay: 80ms; } .cmdk li:nth-child(6) { animation-delay: 100ms; }
+.cmdk li:nth-child(n+7) { animation-delay: 120ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .packet, .chip-pile, .blast, .sev-flash { display: none; }
+}

@@ -38,6 +38,27 @@ const Bar = ({ value, name }) => (
   </span>
 )
 
+function Typewriter({ text, delay = 0, speed = 18 }) {
+  const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const [n, setN] = useState(reduce ? text.length : 0)
+  useEffect(() => {
+    if (reduce) return
+    let i = 0
+    let timer
+    const start = setTimeout(() => {
+      timer = setInterval(() => { i += 1; setN(i); if (i >= text.length) clearInterval(timer) }, speed)
+    }, delay)
+    const settle = setTimeout(() => setN(text.length), delay + text.length * speed + 1500)
+    return () => { clearTimeout(start); clearInterval(timer); clearTimeout(settle) }
+  }, [text])
+  const done = n >= text.length
+  return (
+    <span className={`typewriter ${done ? 'done' : ''}`} aria-label={text}>
+      <span aria-hidden="true">{text.slice(0, n)}</span>{!done && <span className="caret" aria-hidden="true">▌</span>}
+    </span>
+  )
+}
+
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
@@ -89,6 +110,7 @@ export default function IncidentDetail({ incident, replayT = null }) {
   }
 
   const rc = incident.root_cause
+  const revealed = incident.impact.affected_services.length >= 3
   const m = incident.impact.metrics
   const events = showAll ? incident.timeline.events : incident.timeline.events.filter((e) => e.milestone || e.severity === 'critical')
 
@@ -112,7 +134,16 @@ export default function IncidentDetail({ incident, replayT = null }) {
             <span className="muted small">Started {fmtTime(incident.started_at)} · {Math.round(incident.duration_seconds)}s</span>
           </div>
           <h2 id="incident-title">{incident.title}</h2>
-          <div className="collapse-line" key={`collapse-${incident.id}`} aria-label={`${incident.alert_count} alerts grouped into 1 incident`}>
+          {incident.status === 'resolved' && <div className="resolved-stamp" key={`res-${incident.id}`}>RESOLVED</div>}
+          <div className="collapse-line" key={`collapse-${incident.id}-${revealed}`} aria-label={`${incident.alert_count} alerts grouped into 1 incident`}>
+            {revealed && (
+              <span className="chip-pile" aria-hidden="true">
+                {Array.from({ length: Math.min(14, incident.alert_count) }, (_, i) => (
+                  <span key={i} className={`alert-chip ${i % 3 === 0 ? 'warn' : ''}`}
+                    style={{ '--i': i, '--x': `${((i * 37) % 120) - 60}px`, '--y': `${((i * 53) % 70) - 46}px`, '--r': `${((i * 29) % 40) - 20}deg` }} />
+                ))}
+              </span>
+            )}
             <span className="c-from"><CountUp value={incident.alert_count} duration={900} /> {incident.alert_count === 1 ? 'alert' : 'alerts'}</span>
             <span className="c-arrow" aria-hidden="true">→</span>
             <span className="c-to">1 incident</span>
@@ -150,7 +181,7 @@ export default function IncidentDetail({ incident, replayT = null }) {
             {rc.evidence.map((e, i) => (
               <li key={i} style={{ '--i': i }}>
                 <svg className="tick" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9" /></svg>
-                <span>{e}</span>
+                <span>{e.startsWith('Critical signal:') ? <Typewriter text={e} delay={i * 380 + 400} /> : e}</span>
               </li>
             ))}
           </ul>
