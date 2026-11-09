@@ -201,3 +201,16 @@ def test_fault_api():
     assert r.status_code == 200 and "auth-service" in r.json()["affected"]
     assert client.get("/api/incidents").json()[0]["root_service"] == "redis-cache"
     assert client.post("/api/faults/inject", json={"service": "redis-cache", "fault": "deploy"}).status_code == 400
+
+
+def test_reset_can_be_undone():
+    from app.main import app, store
+    store.reset()
+    client = TestClient(app)
+    client.post("/api/simulate", json={"scenario": "bad_deploy", "mode": "instant"})
+    n = client.get("/api/stats").json()["events"]
+    assert client.post("/api/reset").json()["cleared"] == n
+    assert client.get("/api/stats").json()["events"] == 0
+    assert client.post("/api/reset/undo").json()["restored"] == n
+    assert client.get("/api/stats").json()["events"] == n
+    assert client.post("/api/reset/undo").status_code == 409

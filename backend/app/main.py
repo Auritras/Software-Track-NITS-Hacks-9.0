@@ -153,8 +153,15 @@ def simulate_stop():
 @app.post("/api/reset")
 def reset():
     runner.stop()
-    store.reset()
-    return {"ok": True}
+    return {"ok": True, "cleared": store.reset()}
+
+
+@app.post("/api/reset/undo")
+def undo_reset():
+    restored = store.undo_reset()
+    if not restored:
+        raise HTTPException(409, "Nothing to restore")
+    return {"ok": True, "restored": restored}
 
 
 @app.post("/api/settings")

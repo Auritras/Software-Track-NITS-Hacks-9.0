@@ -31,10 +31,11 @@ export function Skeleton({ kind = 'line', width }) {
 
 export function BrandMark({ className = 'brand-mark' }) {
   return (
-    <svg className={className} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="#161e2b" />
-      <circle cx="16" cy="16" r="9" fill="none" stroke="#4c8dff" strokeWidth="2.5" />
-      <circle cx="16" cy="16" r="3.5" fill="#4c8dff" />
+    <svg className={className} viewBox="0 0 44 44" aria-hidden="true">
+      <rect x="4" y="4" width="38" height="38" rx="10" fill="#111" />
+      <rect x="1" y="1" width="38" height="38" rx="10" fill="#fbde86" stroke="#111" strokeWidth="2" />
+      <circle cx="20" cy="20" r="11" fill="#86d2fb" stroke="#111" strokeWidth="2" />
+      <circle cx="20" cy="20" r="4.5" fill="#ff82b7" stroke="#111" strokeWidth="2" />
     </svg>
   )
 }

@@ -73,7 +73,7 @@ export function AccuracyPanel() {
         <div className="acc-layout fade-in">
           <div className="acc-headline">
             <div className="acc-big">
-              <div className="acc-v">{pct(data.top1_accuracy)}</div>
+              <div className="acc-v hero">{pct(data.top1_accuracy)}</div>
               <div className="acc-l">Root cause correct (top 1)</div>
             </div>
             <div className="acc-big">

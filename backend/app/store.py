@@ -47,12 +47,32 @@ class EventStore:
         with self._lock:
             return list(self._events)
 
-    def reset(self) -> None:
+    def reset(self) -> int:
+        """Clear all events, keeping a snapshot so the reset can be undone."""
         with self._lock:
+            cleared = len(self._events)
+            if cleared:
+                self._trash = (list(self._events), dict(self.source_counts))
             self._events.clear()
             self.source_counts.clear()
             self.version += 1
             self._cache = None
+            return cleared
+
+    def undo_reset(self) -> int:
+        """Restore the events cleared by the last reset (merged with anything added since)."""
+        with self._lock:
+            trash = getattr(self, "_trash", None)
+            if not trash:
+                return 0
+            events, sources = trash
+            self._trash = None
+            self._events = sorted(events + self._events, key=lambda e: (e.timestamp, e.seq))
+            for k, v in sources.items():
+                self.source_counts[k] = self.source_counts.get(k, 0) + v
+            self.version += 1
+            self._cache = None
+            return len(events)
 
     def incidents(self) -> list[dict]:
         with self._lock:
