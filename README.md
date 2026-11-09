@@ -1,12 +1,30 @@
 # J.A.R.V.I.S.
 **Justified Analysis, Reasoning & Visualization of Incident Systems**
-NITS Hacks 9.0, Software Track, Problem Statement 1
+NITS Hacks 9.0 · Software Track · Problem Statement 1 · Team **Packet Lost**
 
+### ▶ Live demo: **LIVE_URL**
+> The first load can take up to a minute if the free server is asleep.
+
+**49 alerts from 7 services → 1 incident → root cause found: Primary DB connection pool exhausted.**
+**97.3% root-cause accuracy over 300 random failures.**
+
+![J.A.R.V.I.S. dashboard: Primary DB flagged as the root cause, with the failure path drawn up to the apps](docs/dashboard.png)
+
+### Try it in 30 seconds
+1. Open the live demo. A payment-platform incident is already loaded: login failures, slow APIs and failed payments.
+2. Scroll down to see the **root cause**, the evidence behind it, why every other service was ruled out, the impact in ₹ and users, the timeline, and the recommended fixes.
+3. In **Break anything**, pick any service (say *Bank Connector*) and click **Break**. Nothing is scripted: the failure spreads through the dependency graph, and J.A.R.V.I.S. has to find it live.
+4. Scroll to **Measured accuracy** and click **Re-run with new random faults**.
+5. Press **Ctrl/⌘ K** for the command menu.
+
+## The problem
 Monitoring tools send a separate alert for every symptom. When a payment platform's database runs out of connections, on-call engineers see login failures, slow APIs and failed transactions as unrelated alerts.
 
-J.A.R.V.I.S. collects events from several sources and works out which ones are connected. It then identifies the most likely root cause, with evidence you can check, maps the impact, shows how the failure spread, and suggests fixes in a report people can read.
+J.A.R.V.I.S. collects events from several sources and works out which ones are connected. It then identifies the most likely root cause, with evidence you can check, maps the impact, shows how the failure spread, and suggests fixes in a report people can read. An unrelated analytics slowdown in the same scenario is correctly kept as a separate incident.
 
-> Demo scenario: **49 alerts from 7 services → 1 incident → "Primary DB: connection pool exhausted" at 82% confidence**, with an unrelated analytics slowdown correctly kept as a separate incident.
+| Root cause with "why not" for every other service | Measured accuracy |
+|---|---|
+| ![Root cause panel](docs/root-cause.png) | ![Accuracy benchmark](docs/accuracy.png) |
 
 ## What makes it different
 - **Break anything.** Pick any service on the map and a failure type, such as OOM, a bad deploy, pool exhaustion or a provider outage. Nothing is scripted: the failure spreads through the real dependency graph, and J.A.R.V.I.S. has to diagnose it live.
@@ -19,7 +37,7 @@ J.A.R.V.I.S. collects events from several sources and works out which ones are c
 |---|---|
 | Multiple data sources | REST API (`POST /api/events`), log file upload (JSON lines, plain text, logfmt), simulated live payment platform |
 | Event correlation | Uses **timestamps** (a sliding time window), **common services** (same service or connected in the dependency graph, plus shared `trace_id`/`request_id`/`host`) and **activity patterns** (the same error signature on different services once ids and numbers are stripped). Union-find merges the linked events, and the reason for every link is recorded and shown |
-| Root cause detection | Explainable scoring of every candidate service: **coverage**, **precedence**, **depth** and **causal signal** |
+| Root cause detection | Explainable, causality-aware scoring of every candidate service: **coverage**, **precedence**, **depth**, **causal signal** and **intensity**, with a "why not" reason for each rejected candidate |
 | Impact analysis | Affected services, at-risk services (dependents not yet alerting), business capabilities, failed logins, failed transactions, revenue at risk, users affected |
 | Incident timeline | Ordered events plus the propagation path from the root to each symptom, animated on the service map |
 | Smart recommendations | Rule base keyed on root-cause component type and failure type, plus mitigations for the observed symptoms, ordered by priority (immediate / short / long term) with runnable commands |
@@ -70,6 +88,7 @@ The server loads the headline scenario at startup so the dashboard never opens e
 |---|---|---|
 | POST | `/api/events` | Push one event, a list, or `{"events": [...]}` |
 | POST | `/api/logs/upload` | Upload a log file (multipart `file`) |
+| POST | `/api/integrations/alertmanager` | Prometheus Alertmanager webhook receiver |
 | POST | `/api/simulate` | `{"scenario": "db_pool_exhaustion", "mode": "live" or "instant", "speed": 1}` |
 | GET | `/api/incidents` and `/api/incidents/{id}` | Incident list and full analysis |
 | GET | `/api/incidents/{id}/report` | Markdown incident report |
@@ -88,6 +107,19 @@ Example:
 curl -X POST localhost:8000/api/events -H "Content-Type: application/json" \
   -d '{"service":"payment-service","level":"error","message":"Transaction TXN-1 failed: db unavailable","amount":2500}'
 ```
+
+## Plug in your existing monitoring
+J.A.R.V.I.S. accepts **Prometheus Alertmanager** webhooks directly, so a team can point its existing alerts at it without changing anything else:
+
+```yaml
+# alertmanager.yml
+receivers:
+  - name: jarvis
+    webhook_configs:
+      - url: https://<your-jarvis-host>/api/integrations/alertmanager
+```
+
+Each alert's `service` / `app` / `job` / `instance` label becomes the service. `severity`, `summary` and `startsAt` are mapped automatically, and resolved alerts are recorded as recoveries.
 
 ## Deploy (free)
 Deploy to Render as a single Docker web service: `render.yaml` and `Dockerfile` are included. Connect the GitHub repo on Render and it builds the dashboard and API together. The free plan sleeps when idle, so open the URL once before judging.

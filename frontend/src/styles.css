@@ -388,3 +388,11 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 }
 
 .main-grid > .panel { align-self: start; }
+
+/* judge-mode intro */
+.intro { display: flex; justify-content: space-between; align-items: center; gap: var(--s-5); flex-wrap: wrap; background: var(--yellow-soft); }
+.intro-copy { flex: 1 1 420px; display: flex; flex-direction: column; gap: var(--s-2); }
+.intro h2 { font-family: var(--display); font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 400; letter-spacing: 0.02em; }
+.intro-steps { margin: var(--s-1) 0 0; padding-left: var(--s-5); display: grid; grid-template-columns: repeat(3, auto); justify-content: start; column-gap: var(--s-6); row-gap: var(--s-1); font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.intro-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+@media (max-width: 900px) { .intro-steps { grid-template-columns: 1fr; } }

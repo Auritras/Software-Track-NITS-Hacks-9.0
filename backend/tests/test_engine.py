@@ -214,3 +214,28 @@ def test_reset_can_be_undone():
     assert client.post("/api/reset/undo").json()["restored"] == n
     assert client.get("/api/stats").json()["events"] == n
     assert client.post("/api/reset/undo").status_code == 409
+
+
+def test_alertmanager_webhook():
+    from app.main import app, store
+    store.reset()
+    client = TestClient(app)
+    t0 = BASE.isoformat()
+    payload = {
+        "version": "4", "status": "firing", "receiver": "jarvis",
+        "commonLabels": {"env": "prod"},
+        "alerts": [
+            {"status": "firing", "labels": {"alertname": "PostgresTooManyConnections", "severity": "critical", "service": "primary-db"},
+             "annotations": {"summary": "too many connections (200/200)"}, "startsAt": t0, "fingerprint": "a1"},
+            {"status": "firing", "labels": {"alertname": "LoginErrors", "severity": "warning", "job": "auth-service"},
+             "annotations": {"summary": "login failed for 12% of requests"}, "startsAt": (BASE + timedelta(seconds=4)).isoformat()},
+            {"status": "firing", "labels": {"alertname": "HighLatency", "instance": "api-gateway:9090"},
+             "annotations": {"description": "p99 latency 3.1s"}, "startsAt": (BASE + timedelta(seconds=6)).isoformat()},
+        ],
+    }
+    r = client.post("/api/integrations/alertmanager", json=payload)
+    assert r.status_code == 200 and r.json()["accepted"] == 3
+    incidents = client.get("/api/incidents").json()
+    assert incidents[0]["root_service"] == "primary-db"
+    assert set(incidents[0]["services"]) == {"primary-db", "auth-service", "api-gateway"}
+    assert client.post("/api/integrations/alertmanager", json={"nope": 1}).status_code == 400

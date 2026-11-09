@@ -9,7 +9,7 @@ import { AccuracyPanel, BreakPanel } from './Features.jsx'
 
 const POLL_MS = 1500
 
-export const sourceLabel = (s) => (s === 'api' ? 'API' : s === 'simulator' ? 'Simulated live' : s.startsWith('log:') ? `Log file: ${s.slice(4)}` : s)
+export const sourceLabel = (s) => (s === 'api' ? 'API' : s === 'simulator' ? 'Simulated live' : s === 'alertmanager' ? 'Prometheus Alertmanager' : s === 'fault-injection' ? 'Break anything' : s.startsWith('log:') ? `Log file: ${s.slice(4)}` : s)
 const REPO_URL = 'https://github.com/Auritras/Software-Track-NITS-Hacks-9.0'
 
 function useToast() {
@@ -123,6 +123,32 @@ export default function App() {
   const pushAlert = () => act('push', () => api.sendEvent({
     service: 'api-gateway', level: 'warning', message: 'p95 latency 1.9s on /api/v1/accounts',
   }), () => 'Alert received via POST /api/events')
+  // Judge mode: one click (or ?demo=live) replays the headline incident from a clean slate.
+  const replayDemo = () => act('replay', async () => {
+    await api.reset()
+    setSelectedId(null); setDetail(null)
+    return api.simulate('db_pool_exhaustion', 'live', 2)
+  }, () => 'Replaying the payment-platform incident live. Watch the map.')
+  const [introOpen, setIntroOpen] = useState(() => {
+    try { return localStorage.getItem('jarvis-intro-dismissed') !== '1' } catch { return true }
+  })
+  const dismissIntro = () => {
+    setIntroOpen(false)
+    try { localStorage.setItem('jarvis-intro-dismissed', '1') } catch { /* storage unavailable */ }
+  }
+  const demoStarted = useRef(false)
+  useEffect(() => {
+    if (demoStarted.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('demo') === 'live') {
+      demoStarted.current = true
+      params.delete('demo')
+      const qs = params.toString()
+      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
+      replayDemo()
+    }
+  }, [])
+
   const upload = (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -199,6 +225,25 @@ export default function App() {
         <div className="banner" role="alert">
           Can't reach the backend. Start it with <code>uvicorn app.main:app --app-dir backend</code> and this page will reconnect automatically.
         </div>
+      )}
+
+      {introOpen && (
+        <section className="panel intro" aria-labelledby="intro-title">
+          <div className="intro-copy">
+            <h2 id="intro-title">Dozens of alerts. One real problem.</h2>
+            <p className="panel-copy">Login failures, slow APIs and failed payments look like separate alerts. J.A.R.V.I.S. links them, finds the root cause, explains why, and tells you what to fix first.</p>
+            <ol className="intro-steps">
+              <li><b>Watch</b> an outage stream in live</li>
+              <li><b>See</b> 49 alerts become one incident with a root cause</li>
+              <li><b>Break</b> any service yourself and watch it get diagnosed</li>
+            </ol>
+          </div>
+          <div className="intro-actions">
+            <Button variant="primary" onClick={replayDemo} loading={busy === 'replay'}>Replay the incident live</Button>
+            <Button onClick={() => document.getElementById('break-title')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Break a service</Button>
+            <Button variant="quiet" onClick={dismissIntro}>Dismiss</Button>
+          </div>
+        </section>
       )}
 
       <div className="stats">
