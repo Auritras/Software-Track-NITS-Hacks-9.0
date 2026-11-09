@@ -1,0 +1,20 @@
+# Sample mixed-format log export from the payment platform (upload via the dashboard).
+# Story: a bad config push to redis-cache disables eviction, the cache runs out of memory,
+# and sessions + fraud checks fail across the platform. One unrelated email delay at the end.
+2026-11-09T06:30:00Z INFO [api-gateway] Routed 4,210 requests/min, p99 298ms
+2026-11-09T06:30:02Z INFO [auth-service] POST /login 200 in 88ms
+2026-11-09T06:30:05Z INFO [redis-cache] Configuration reload: maxmemory-policy=noeviction
+ts=2026-11-09T06:31:10Z level=warn service=redis-cache msg="Memory usage 96% of maxmemory, evictions disabled"
+ts=2026-11-09T06:31:40Z level=fatal service=redis-cache msg="OOM command not allowed when used memory > maxmemory"
+2026-11-09 06:31:42,118 ERROR auth-service: Login failed: session store unavailable
+2026-11-09 06:31:44,502 ERROR auth-service: Login failed: session store unavailable
+{"timestamp": "2026-11-09T06:31:45Z", "service": "fraud-service", "level": "error", "message": "Risk check timed out after 2000ms: feature cache unreachable"}
+{"timestamp": "2026-11-09T06:31:47Z", "service": "payment-service", "level": "error", "message": "Transaction TXN-551203 failed: fraud check timeout", "amount": 4999}
+{"timestamp": "2026-11-09T06:31:49Z", "service": "payment-service", "level": "error", "message": "Transaction TXN-551288 failed: fraud check timeout", "amount": 12500}
+2026-11-09T06:31:50Z WARN [account-service] Balance lookups slow: p99 1450ms (cache miss storm)
+2026-11-09T06:31:52Z ERROR [api-gateway] HTTP 502 rate 14% on /api/v1/login
+2026-11-09T06:31:55Z ERROR [mobile-app] Users logged out unexpectedly: session invalid
+ts=2026-11-09T06:31:58Z level=error service=payment-service msg="Transaction TXN-551342 failed: fraud check timeout" amount=780
+2026-11-09T06:32:01Z ERROR [auth-service] Login failed: session store unavailable
+this line is not a log line and will be skipped
+2026-11-09T06:52:00Z WARN [message-queue] Queue depth 12,400 on email-receipts (consumer lag)
