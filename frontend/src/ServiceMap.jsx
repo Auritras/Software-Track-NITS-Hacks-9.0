@@ -1,20 +1,10 @@
-import React, { useMemo } from 'react'
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const W = 1000
 const NODE_W = 144
 const LABEL_X = 28
 const LABEL_MAX_W = NODE_W - LABEL_X - 10 // room for the label inside the box
 const LABEL_SIZE = 13
-const CHAR_W = 0.6 // average glyph width of the bold label font, as a fraction of font size
-
-/** Fit a label inside its node: shrink the font down to 10px, then truncate with an ellipsis. */
-function fitLabel(label) {
-  const natural = label.length * LABEL_SIZE * CHAR_W
-  if (natural <= LABEL_MAX_W) return { text: label, size: LABEL_SIZE }
-  const size = Math.max(10, (LABEL_SIZE * LABEL_MAX_W) / natural)
-  const maxChars = Math.floor(LABEL_MAX_W / (size * CHAR_W))
-  return { text: label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label, size }
-}
 const NODE_H = 48
 const TIER_GAP = 88
 const TOP = 32
@@ -22,6 +12,31 @@ const TOP = 32
 const KIND_LABEL = {
   frontend: 'Client app', gateway: 'Gateway', service: 'Service', database: 'Database',
   cache: 'Cache', external: 'External', queue: 'Queue', unknown: 'Unmapped',
+}
+
+/** SVG label that measures its real rendered width and shrinks (down to 10px), then truncates, to fit. */
+function FitLabel({ text, x, y, max }) {
+  const ref = useRef()
+  // `measure: true` renders the full text at full size so its real width can be read.
+  const [fit, setFit] = useState({ text, size: LABEL_SIZE, measure: true })
+  const [fontsReady, setFontsReady] = useState(0)
+  useLayoutEffect(() => {
+    let alive = true
+    document.fonts?.ready.then(() => alive && setFontsReady((n) => n + 1))
+    return () => { alive = false }
+  }, [])
+  useLayoutEffect(() => { setFit({ text, size: LABEL_SIZE, measure: true }) }, [text, max, fontsReady])
+  useLayoutEffect(() => {
+    if (!fit.measure) return
+    const el = ref.current
+    const width = el?.getComputedTextLength ? el.getComputedTextLength() : 0
+    if (!width || width <= max) { setFit({ text, size: LABEL_SIZE, measure: false }); return }
+    const size = Math.max(10, (LABEL_SIZE * max) / width)
+    const scaled = (width * size) / LABEL_SIZE
+    const shown = scaled <= max ? text : `${text.slice(0, Math.max(3, Math.floor((text.length * max) / scaled) - 1))}…`
+    setFit({ text: shown, size, measure: false })
+  }, [fit.measure, text, max])
+  return <text ref={ref} className="node-label" x={x} y={y} style={{ fontSize: fit.size }}>{fit.text}</text>
 }
 
 function layout(nodes) {
@@ -42,12 +57,16 @@ function curve(a, b) {
   return `M${a.x},${a.y} C${a.x},${midY} ${b.x},${midY} ${b.x},${b.y}`
 }
 
-export default function ServiceMap({ topology, incident, onSelectService, selectedService }) {
+export default function ServiceMap({ topology, incident, onSelectService, selectedService, replayT = null }) {
   const { pos, height } = useMemo(() => layout(topology?.nodes || []), [topology])
 
   const propagation = new Set((incident?.timeline?.propagation_edges || []).map((e) => `${e.from}>${e.to}`))
   const incidentServices = new Set((incident?.impact?.affected_services || []).map((s) => s.service))
   const rootService = incident?.root_cause?.service
+  // Replay: only services that had started failing by time replayT are shown as failing.
+  const replaying = replayT !== null && incident
+  const startedAt = Object.fromEntries((incident?.timeline?.propagation || []).map((p) => [p.service, p.offset_seconds]))
+  const hasStarted = (svc) => startedAt[svc] !== undefined && startedAt[svc] <= replayT
 
   return (
     <div className="map-scroll">
@@ -68,7 +87,7 @@ export default function ServiceMap({ topology, incident, onSelectService, select
           if (!a || !b) return null
           const from = { x: a.x, y: a.y + NODE_H / 2 }
           const to = { x: b.x, y: b.y - NODE_H / 2 }
-          const hot = propagation.has(`${e.target}>${e.source}`)
+          const hot = propagation.has(`${e.target}>${e.source}`) && (!replaying || hasStarted(e.source))
           // Hot edges are drawn callee -> caller so the arrow shows the direction the failure travelled.
           if (!hot) return <path key={`${e.source}-${e.target}`} className="edge" d={curve(from, to)} />
           const d = curve(to, from)
@@ -87,8 +106,10 @@ export default function ServiceMap({ topology, incident, onSelectService, select
 
         {topology.nodes.map((n) => {
           const p = pos[n.id]
-          const status = n.health?.status || 'healthy'
-          const isRoot = rootService ? rootService === n.id : Boolean(n.health?.root_cause)
+          const status = replaying
+            ? (hasStarted(n.id) ? 'failing' : 'healthy')
+            : (n.health?.status || 'healthy')
+          const isRoot = (rootService ? rootService === n.id : Boolean(n.health?.root_cause)) && (!replaying || hasStarted(n.id))
           const dim = incident && !incidentServices.has(n.id) && !isRoot
           const select = () => onSelectService?.(selectedService === n.id ? null : n.id)
           return (
@@ -106,10 +127,7 @@ export default function ServiceMap({ topology, incident, onSelectService, select
               <rect className="node-shadow" x={3} y={3} width={NODE_W} height={NODE_H} rx={10} />
               <rect className="node-box" width={NODE_W} height={NODE_H} rx={10} />
               <circle className="node-dot" cx={16} cy={NODE_H / 2} r={4} />
-              {(() => {
-                const { text, size } = fitLabel(n.label)
-                return <text className="node-label" x={LABEL_X} y={21} style={{ fontSize: size }}>{text}</text>
-              })()}
+              <FitLabel text={n.label} x={LABEL_X} y={21} max={LABEL_MAX_W} />
               <text className="node-kind" x={LABEL_X} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
               {isRoot && (
                 <g transform={`translate(${NODE_W / 2 - 40}, -12)`}>

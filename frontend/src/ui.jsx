@@ -1,4 +1,30 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+
+const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** Number that counts from its previous value to the new one (ease-out, ~700 ms). */
+export function CountUp({ value, decimals = 0, suffix = '', duration = 700 }) {
+  const target = Number(value) || 0
+  const [shown, setShown] = useState(target)
+  const from = useRef(0)
+  const frame = useRef()
+  useEffect(() => {
+    if (reducedMotion()) { setShown(target); from.current = target; return }
+    const start = performance.now()
+    const begin = from.current
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = 1 - (1 - p) ** 3
+      setShown(begin + (target - begin) * eased)
+      if (p < 1) frame.current = requestAnimationFrame(tick)
+      else from.current = target
+    }
+    frame.current = requestAnimationFrame(tick)
+    return () => { cancelAnimationFrame(frame.current); from.current = target }
+  }, [target, duration])
+  const text = shown.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+  return <span className="countup">{text}{suffix}</span>
+}
 
 export function Button({ loading = false, variant = '', size = '', children, disabled, ...props }) {
   return (

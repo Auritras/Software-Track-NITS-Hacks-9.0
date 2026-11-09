@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import CommandMenu, { MOD } from './CommandMenu.jsx'
+import ReplayBar from './ReplayBar.jsx'
 import { api, fmtTime } from './api.js'
 import ServiceMap from './ServiceMap.jsx'
 import IncidentDetail, { DetailSkeleton } from './IncidentDetail.jsx'
-import { BrandMark, Button, Skeleton, useBusy } from './ui.jsx'
+import { BrandMark, Button, CountUp, Skeleton, useBusy } from './ui.jsx'
 import { AccuracyPanel, BreakPanel } from './Features.jsx'
 
 const POLL_MS = 1500
@@ -24,10 +25,10 @@ function useToast() {
   return [toast, show, hide]
 }
 
-function Stat({ label, value, tone = '', loading }) {
+function Stat({ label, value, tone = '', loading, decimals = 0, suffix = '' }) {
   return (
     <div className={`stat ${tone}`}>
-      {loading ? <Skeleton kind="num" /> : <div className="stat-v">{value}</div>}
+      {loading ? <Skeleton kind="num" /> : <div className="stat-v"><CountUp value={value} decimals={decimals} suffix={suffix} /></div>}
       <div className="stat-l">{label}</div>
     </div>
   )
@@ -49,6 +50,7 @@ export default function App() {
   const [offline, setOffline] = useState(false)
   const [toast, showToast, hideToast] = useToast()
   const [cmdOpen, setCmdOpen] = useState(false)
+  const [replayT, setReplayT] = useState(null)
   const [faultCatalog, setFaultCatalog] = useState({})
   const [busy, run] = useBusy()
   const fileRef = useRef()
@@ -250,7 +252,7 @@ export default function App() {
         <Stat label="Events ingested" value={stats?.events ?? 0} loading={!loaded} />
         <Stat label="Raw alerts" value={stats?.alerts ?? 0} loading={!loaded} />
         <Stat label="Correlated incidents" value={stats?.incidents ?? 0} tone="accent" loading={!loaded} />
-        <Stat label="Alert noise reduction" value={`${stats?.noise_reduction ?? 0}%`} tone="good" loading={!loaded} />
+        <Stat label="Alert noise reduction" value={stats?.noise_reduction ?? 0} decimals={1} suffix="%" tone="good" loading={!loaded} />
         <Stat label="Active incidents" value={stats?.active_incidents ?? 0} loading={!loaded} />
         <div className="stat wide">
           <div className="sources">
@@ -273,8 +275,9 @@ export default function App() {
             </div>
           </div>
           {topology
-            ? <ServiceMap topology={topology} incident={detail} selectedService={serviceFilter} onSelectService={setServiceFilter} />
+            ? <ServiceMap topology={topology} incident={detail} selectedService={serviceFilter} onSelectService={setServiceFilter} replayT={replayT} />
             : <Skeleton kind="map" />}
+          {detail && <ReplayBar key={detail.id} incident={detail} value={replayT} onChange={setReplayT} />}
         </section>
 
         <div className="side-col">
@@ -310,7 +313,7 @@ export default function App() {
         </div>
       </div>
 
-      {detailLoading ? <DetailSkeleton /> : (loaded ? <IncidentDetail incident={detail} /> : <DetailSkeleton />)}
+      {detailLoading ? <DetailSkeleton /> : (loaded ? <IncidentDetail incident={detail} replayT={replayT} /> : <DetailSkeleton />)}
 
       <AccuracyPanel />
 
