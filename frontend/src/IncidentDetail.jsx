@@ -38,6 +38,24 @@ const Bar = ({ value, name }) => (
   </span>
 )
 
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text) } catch {
+      const ta = Object.assign(document.createElement('textarea'), { value: text })
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove()
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1400)
+  }
+  return (
+    <span className="copy">
+      <Button size="sm" onClick={copy} aria-label="Copy command">Copy</Button>
+      {copied && <span className="copied" role="status">Copied!</span>}
+    </span>
+  )
+}
+
 export function DetailSkeleton() {
   return (
     <div className="detail" aria-busy="true" aria-label="Loading incident">
@@ -128,7 +146,14 @@ export default function IncidentDetail({ incident, replayT = null }) {
               <div className="muted small">Confidence {rc.confidence}% · {rc.service}</div>
             </div>
           </div>
-          <ul className="evidence">{rc.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
+          <ul className="evidence ticks" key={`ev-${incident.id}-${rc.service}`}>
+            {rc.evidence.map((e, i) => (
+              <li key={i} style={{ '--i': i }}>
+                <svg className="tick" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9" /></svg>
+                <span>{e}</span>
+              </li>
+            ))}
+          </ul>
           <h4 className="sub">Candidate ranking <span className="muted small">· why each service was ruled in or out</span></h4>
           <div className="table-scroll">
             <table className="cand">
@@ -215,7 +240,12 @@ export default function IncidentDetail({ incident, replayT = null }) {
                 <div>
                   <div className="rec-title">{r.title}</div>
                   <div className="rec-detail">{r.detail}</div>
-                  {r.command && <code className="cmd">{r.command}</code>}
+                  {r.command && (
+                    <div className="cmd-wrap">
+                      <code className="cmd">{r.command}</code>
+                      <CopyButton text={r.command} />
+                    </div>
+                  )}
                   <div className="rec-target">Target: {r.target}</div>
                 </div>
               </li>

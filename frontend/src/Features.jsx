@@ -3,7 +3,7 @@ import { api } from './api.js'
 import { Button, CountUp, Skeleton, useBusy } from './ui.jsx'
 
 /** "Break anything": inject a failure into any service and watch J.A.R.V.I.S. diagnose it. */
-export function BreakPanel({ topology, service, onServiceChange, streaming, onInjected, onError }) {
+export function BreakPanel({ topology, service, onServiceChange, streaming, onBreak }) {
   const [catalog, setCatalog] = useState(null)
   const [fault, setFault] = useState('')
   const [busy, run] = useBusy()
@@ -14,12 +14,7 @@ export function BreakPanel({ topology, service, onServiceChange, streaming, onIn
   useEffect(() => { setFault(options[0]?.id || '') }, [target, catalog])
 
   const label = topology?.nodes.find((n) => n.id === target)?.label || target
-  const inject = () => run('inject', async () => {
-    try {
-      const r = await api.injectFault(target, fault, 'live', 1)
-      onInjected?.(`${label} broken. The failure is spreading to ${r.affected.length - 1} dependent service${r.affected.length === 2 ? '' : 's'}.`)
-    } catch (e) { onError?.(e.message) }
-  })
+  const inject = () => run('inject', () => onBreak(target, fault))
 
   return (
     <section className="panel break-panel" aria-labelledby="break-title">

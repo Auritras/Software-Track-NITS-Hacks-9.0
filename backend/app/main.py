@@ -312,4 +312,5 @@ if DIST.exists():
         candidate = (DIST / path).resolve()
         if path and candidate.is_relative_to(DIST) and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(DIST / "index.html")
+        # no-cache so visitors always pick up a new deploy (hashed /assets files can still be cached)
+        return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})

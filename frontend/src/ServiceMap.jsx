@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const W = 1000
 const NODE_W = 144
@@ -67,10 +67,29 @@ export default function ServiceMap({ topology, incident, onSelectService, select
   const replaying = replayT !== null && incident
   const startedAt = Object.fromEntries((incident?.timeline?.propagation || []).map((p) => [p.service, p.offset_seconds]))
   const hasStarted = (svc) => startedAt[svc] !== undefined && startedAt[svc] <= replayT
+  // The ROOT CAUSE verdict is only revealed once there is evidence: 3+ correlated services.
+  const EVIDENCE = 3
+  const failingCount = replaying
+    ? Object.values(startedAt).filter((t) => t <= replayT).length
+    : (incident?.impact?.affected_services?.length || 0)
+  const revealed = Boolean(incident) && failingCount >= EVIDENCE
+  const [spotlight, setSpotlight] = useState(false)
+  const wasRevealed = useRef(false)
+  const lastIncident = useRef(null)
+  useEffect(() => {
+    if (incident?.id !== lastIncident.current) { lastIncident.current = incident?.id; wasRevealed.current = revealed; return }
+    if (revealed && !wasRevealed.current) {
+      setSpotlight(true)
+      const t = setTimeout(() => setSpotlight(false), 1600)
+      wasRevealed.current = true
+      return () => clearTimeout(t)
+    }
+    wasRevealed.current = revealed
+  }, [revealed, incident?.id])
 
   return (
     <div className="map-scroll">
-      <svg className="service-map" viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Service dependency map">
+      <svg className={`service-map ${spotlight ? 'spotlight' : ''}`} viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Service dependency map">
         <defs>
           <pattern id="halftone" width="6" height="6" patternUnits="userSpaceOnUse">
             <rect width="6" height="6" fill="var(--pink-soft)" />
@@ -109,7 +128,7 @@ export default function ServiceMap({ topology, incident, onSelectService, select
           const status = replaying
             ? (hasStarted(n.id) ? 'failing' : 'healthy')
             : (n.health?.status || 'healthy')
-          const isRoot = (rootService ? rootService === n.id : Boolean(n.health?.root_cause)) && (!replaying || hasStarted(n.id))
+          const isRoot = (incident ? rootService === n.id && revealed : Boolean(n.health?.root_cause)) && (!replaying || hasStarted(n.id))
           const dim = incident && !incidentServices.has(n.id) && !isRoot
           const select = () => onSelectService?.(selectedService === n.id ? null : n.id)
           return (
@@ -133,7 +152,7 @@ export default function ServiceMap({ topology, incident, onSelectService, select
                 <text className="node-kind" x={LABEL_X} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
               </g>
               {isRoot && (
-                <g transform={`translate(${NODE_W / 2 - 40}, -12)`}>
+                <g transform={`translate(${NODE_W / 2 - 40}, -12)`} className="root-stamp">
                   <rect className="root-tag" width={80} height={18} rx={9} />
                   <text className="root-tag-text" x={40} y={13.5} textAnchor="middle">ROOT CAUSE</text>
                 </g>
