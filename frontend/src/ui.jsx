@@ -20,7 +20,9 @@ export function CountUp({ value, decimals = 0, suffix = '', duration = 700 }) {
       else from.current = target
     }
     frame.current = requestAnimationFrame(tick)
-    return () => { cancelAnimationFrame(frame.current); from.current = target }
+    // Background tabs pause animation frames: make sure the final value always lands.
+    const settle = setTimeout(() => { setShown(target); from.current = target }, duration + 80)
+    return () => { cancelAnimationFrame(frame.current); clearTimeout(settle); from.current = target }
   }, [target, duration])
   const text = shown.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
   return <span className="countup">{text}{suffix}</span>

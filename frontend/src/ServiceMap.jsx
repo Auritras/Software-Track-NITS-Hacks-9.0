@@ -124,11 +124,14 @@ export default function ServiceMap({ topology, incident, onSelectService, select
               aria-pressed={selectedService === n.id}
               aria-label={`${n.label}, ${status}${isRoot ? ', root cause' : ''}. Filter event stream`}
             >
-              <rect className="node-shadow" x={3} y={3} width={NODE_W} height={NODE_H} rx={10} />
-              <rect className="node-box" width={NODE_W} height={NODE_H} rx={10} />
-              <circle className="node-dot" cx={16} cy={NODE_H / 2} r={4} />
-              <FitLabel text={n.label} x={LABEL_X} y={21} max={LABEL_MAX_W} />
-              <text className="node-kind" x={LABEL_X} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
+              {/* keyed by status: remounts (and replays the jolt) the moment a service starts failing */}
+              <g className="jolt" key={status}>
+                <rect className="node-shadow" x={3} y={3} width={NODE_W} height={NODE_H} rx={10} />
+                <rect className="node-box" width={NODE_W} height={NODE_H} rx={10} />
+                <circle className="node-dot" cx={16} cy={NODE_H / 2} r={4} />
+                <FitLabel text={n.label} x={LABEL_X} y={21} max={LABEL_MAX_W} />
+                <text className="node-kind" x={LABEL_X} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
+              </g>
               {isRoot && (
                 <g transform={`translate(${NODE_W / 2 - 40}, -12)`}>
                   <rect className="root-tag" width={80} height={18} rx={9} />

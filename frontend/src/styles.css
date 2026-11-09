@@ -168,10 +168,15 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .map-scroll { overflow-x: auto; margin: 0 calc(var(--s-4) * -1); padding: 0 var(--s-4); }
 .service-map { width: 100%; min-width: 720px; height: auto; display: block; }
 .edge { fill: none; stroke: var(--ink); stroke-opacity: 0.28; stroke-width: 1.5; }
-.edge.hot { stroke: var(--pink); stroke-opacity: 1; stroke-width: 3; stroke-dasharray: 8 5; }
+.edge.hot { stroke: var(--pink); stroke-opacity: 1; stroke-width: 3; stroke-dasharray: 8 5; animation: edge-flow 0.7s linear infinite; }
 .particle { fill: var(--pink); stroke: var(--ink); stroke-width: 1.5; }
 .node { cursor: pointer; transition: opacity var(--dur) var(--ease); }
-.node.dim { opacity: 0.45; }
+/* dimmed nodes stay opaque so edges never show through them */
+.node.dim .node-box { fill: #f3f5f7; stroke: #a7b0b8; }
+.node.dim .node-shadow { fill: #a7b0b8; }
+.node.dim .node-label { fill: #6b747c; }
+.node.dim .node-kind { fill: #8a939b; }
+.node.dim .node-dot { stroke: #a7b0b8; }
 .node-shadow { fill: var(--ink); }
 .node-box { fill: var(--paper); stroke: var(--ink); stroke-width: 2; }
 .node:focus-visible { outline: none; }
@@ -415,3 +420,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .collapse-line .c-to { padding: 0 var(--s-2); border: 1.5px solid var(--ink); border-radius: 6px; background: var(--pink); box-shadow: var(--shadow-sm); animation: pop 500ms var(--ease) 950ms both; }
 @keyframes slide-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
 @keyframes pop { 0% { opacity: 0; transform: scale(0.5); } 70% { opacity: 1; transform: scale(1.12); } 100% { transform: scale(1); } }
+
+/* failure motion: dashes flow from the root cause outwards; a node jolts the moment it fails */
+@keyframes edge-flow { to { stroke-dashoffset: -13; } }
+.node .jolt { transform-box: fill-box; transform-origin: center; }
+.node.failing .jolt { animation: jolt 380ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes jolt { 25% { transform: translateX(-3px) rotate(-1.5deg); } 55% { transform: translateX(3px) rotate(1.5deg); } 80% { transform: translateX(-1px); } }
+.sim-btn { min-width: 196px; }

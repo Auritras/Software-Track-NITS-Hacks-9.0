@@ -32,7 +32,11 @@ function ConfidenceRing({ value }) {
   )
 }
 
-const Bar = ({ value }) => <span className="bar" role="img" aria-label={`${Math.round(value * 100)}%`}><span style={{ width: `${Math.round(value * 100)}%` }} /></span>
+const Bar = ({ value, name }) => (
+  <span className="bar" role="img" aria-label={`${name}: ${Math.round(value * 100)}%`} title={`${name}: ${value.toFixed(2)}`}>
+    <span style={{ width: `${Math.round(value * 100)}%` }} />
+  </span>
+)
 
 export function DetailSkeleton() {
   return (
@@ -91,7 +95,7 @@ export default function IncidentDetail({ incident, replayT = null }) {
           </div>
           <h2 id="incident-title">{incident.title}</h2>
           <div className="collapse-line" key={`collapse-${incident.id}`} aria-label={`${incident.alert_count} alerts grouped into 1 incident`}>
-            <span className="c-from"><CountUp value={incident.alert_count} duration={900} /> alerts</span>
+            <span className="c-from"><CountUp value={incident.alert_count} duration={900} /> {incident.alert_count === 1 ? 'alert' : 'alerts'}</span>
             <span className="c-arrow" aria-hidden="true">→</span>
             <span className="c-to">1 incident</span>
           </div>
@@ -139,7 +143,7 @@ export default function IncidentDetail({ incident, replayT = null }) {
                 {incident.candidates.map((c, i) => (
                   <tr key={c.service} className={i === 0 ? 'lead' : ''}>
                     <td className="cand-name"><div>{c.label}</div><div className="verdict">{c.verdict}</div></td>
-                    {FACTORS.map(([f]) => <td key={f}><Bar value={c.factors[f]} /></td>)}
+                    {FACTORS.map(([f]) => <td key={f}><Bar value={c.factors[f]} name={f} /></td>)}
                     <td className="num">{c.score.toFixed(2)}</td>
                   </tr>
                 ))}
