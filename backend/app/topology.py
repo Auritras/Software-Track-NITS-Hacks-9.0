@@ -36,7 +36,7 @@ DEFAULT_SERVICES: dict[str, dict] = {
                        "capability": "Bank / UPI settlement"},
     "message-queue": {"label": "Message Queue", "kind": "queue", "tier": 4,
                       "capability": "Async messaging"},
-    "warehouse-db": {"label": "Analytics Warehouse", "kind": "database", "tier": 4,
+    "warehouse-db": {"label": "Analytics DB", "kind": "database", "tier": 4,
                      "capability": "Analytics data"},
 }
 

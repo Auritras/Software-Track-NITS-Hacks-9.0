@@ -2,7 +2,7 @@
 **Justified Analysis, Reasoning & Visualization of Incident Systems**
 NITS Hacks 9.0 · Software Track · Problem Statement 1 · Team **Packet Lost**
 
-### ▶ Live demo: **LIVE_URL**
+### ▶ Live demo: **[jarvis-xc35.onrender.com](https://jarvis-xc35.onrender.com/?demo=live)**
 > The first load can take up to a minute if the free server is asleep.
 
 **49 alerts from 7 services → 1 incident → root cause found: Primary DB connection pool exhausted.**
@@ -11,7 +11,7 @@ NITS Hacks 9.0 · Software Track · Problem Statement 1 · Team **Packet Lost**
 ![J.A.R.V.I.S. dashboard: Primary DB flagged as the root cause, with the failure path drawn up to the apps](docs/dashboard.png)
 
 ### Try it in 30 seconds
-1. Open the live demo. A payment-platform incident is already loaded: login failures, slow APIs and failed payments.
+1. Open the [live demo](https://jarvis-xc35.onrender.com/?demo=live); it replays the incident automatically. A payment-platform incident is already loaded: login failures, slow APIs and failed payments.
 2. Scroll down to see the **root cause**, the evidence behind it, why every other service was ruled out, the impact in ₹ and users, the timeline, and the recommended fixes.
 3. In **Break anything**, pick any service (say *Bank Connector*) and click **Break**. Nothing is scripted: the failure spreads through the dependency graph, and J.A.R.V.I.S. has to find it live.
 4. Scroll to **Measured accuracy** and click **Re-run with new random faults**.

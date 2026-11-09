@@ -237,9 +237,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* kinetic "ROOT CAUSE FOUND!" burst */
 .burst-wrap { position: absolute; top: -22px; right: 16px; z-index: 2; filter: drop-shadow(3px 3px 0 var(--ink)); pointer-events: none; }
 .burst { display: inline-block;
-  font-family: var(--comic); font-size: 22px; letter-spacing: 0.04em; line-height: 1; color: var(--ink);
-  padding: 20px 28px; background: var(--yellow);
-  clip-path: polygon(50% 0%, 61% 18%, 82% 6%, 78% 30%, 100% 34%, 84% 52%, 98% 72%, 74% 72%, 76% 96%, 58% 82%, 44% 100%, 38% 80%, 16% 92%, 20% 68%, 0% 62%, 16% 46%, 4% 24%, 28% 26%, 26% 4%, 42% 16%);
+  font-family: var(--comic); font-size: 20px; letter-spacing: 0.04em; line-height: 1; color: var(--ink);
+  padding: 24px 46px; white-space: nowrap; background: var(--yellow);
+  clip-path: polygon(50% 0%, 61% 18%, 82% 6%, 78% 30%, 100% 34%, 92% 52%, 98% 72%, 74% 72%, 76% 96%, 58% 82%, 44% 100%, 38% 80%, 16% 92%, 20% 68%, 0% 62%, 8% 46%, 4% 24%, 28% 26%, 26% 4%, 42% 16%);
   animation: burst 900ms var(--ease) both; }
 .burst span { display: inline-block; transform: rotate(-6deg); }
 
