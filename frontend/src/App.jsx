@@ -51,6 +51,27 @@ export default function App() {
   const [toast, showToast, hideToast] = useToast()
   const [cmdOpen, setCmdOpen] = useState(false)
   const [replayT, setReplayT] = useState(null)
+
+  // Camera follow: when a demo starts, glide to the map; when the stream ends, glide to the root cause.
+  // Any manual scroll, touch or key press hands control back to the user.
+  const following = useRef(false)
+  const sawRunning = useRef(false)
+  const glideTo = (selector, block = 'start') => {
+    const el = document.querySelector(selector)
+    if (!el) return
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block })
+  }
+  const startFollow = useCallback(() => {
+    following.current = true
+    sawRunning.current = false
+    setTimeout(() => glideTo('#map-section', 'start'), 150)
+    const stop = () => {
+      following.current = false
+      ;['wheel', 'touchmove', 'keydown'].forEach((t) => window.removeEventListener(t, stop))
+    }
+    setTimeout(() => ['wheel', 'touchmove', 'keydown'].forEach((t) => window.addEventListener(t, stop, { passive: true })), 900)
+  }, [])
   const [faultCatalog, setFaultCatalog] = useState({})
   const [busy, run] = useBusy()
   const fileRef = useRef()
@@ -107,7 +128,7 @@ export default function App() {
     }
   })
 
-  const simulateLive = () => act('live', () => api.simulate(scenario, 'live', speed),
+  const simulateLive = () => act('live', () => { startFollow(); return api.simulate(scenario, 'live', speed) },
     (r) => `Streaming scenario live for about ${Math.round(r.duration_seconds)} seconds`)
   const inject = () => act('instant', () => api.simulate(scenario, 'instant', speed),
     (r) => `Injected ${r.accepted} events`)
@@ -120,13 +141,14 @@ export default function App() {
       await refresh()
     } catch (e) { showToast(e.message, 'err') }
   })
-  const breakService = (service, fault) => act('break', () => api.injectFault(service, fault, 'live', 1),
+  const breakService = (service, fault) => act('break', () => { startFollow(); return api.injectFault(service, fault, 'live', 1) },
     (r) => `${topology?.nodes.find((n) => n.id === service)?.label || service} broken. Failure spreading to ${r.affected.length - 1} dependent services.`)
   const pushAlert = () => act('push', () => api.sendEvent({
     service: 'api-gateway', level: 'warning', message: 'p95 latency 1.9s on /api/v1/accounts',
   }), () => 'Alert received via POST /api/events')
   // Judge mode: one click (or ?demo=live) replays the headline incident from a clean slate.
   const replayDemo = () => act('replay', async () => {
+    startFollow()
     await api.reset()
     setSelectedId(null); setDetail(null)
     return api.simulate('db_pool_exhaustion', 'live', 2)
@@ -183,6 +205,14 @@ export default function App() {
 
   const sim = stats?.simulation
   const streaming = Boolean(sim?.running)
+  useEffect(() => {
+    if (!following.current) return
+    if (streaming) { sawRunning.current = true; return }
+    if (sawRunning.current) {
+      following.current = false
+      setTimeout(() => glideTo('.rc-panel', 'center'), 500)
+    }
+  }, [streaming])
   const shownEvents = serviceFilter ? events.filter((e) => e.service === serviceFilter) : events
   const detailLoading = selectedId && (!detail || detail.id !== selectedId)
   const description = scenarios.find((s) => s.id === scenario)?.description
@@ -208,7 +238,7 @@ export default function App() {
           <select id="speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
             {[1, 2, 4].map((v) => <option key={v} value={v}>{v}× speed</option>)}
           </select>
-          <Button variant="primary" onClick={simulateLive} loading={busy === 'live' || streaming}>
+          <Button variant="primary" className="btn primary sim-btn" onClick={simulateLive} loading={busy === 'live' || streaming}>
             {streaming ? `Streaming ${sim.emitted} of ${sim.total}` : 'Simulate live'}
           </Button>
           <Button onClick={inject} loading={busy === 'instant'}>Inject instantly</Button>
@@ -251,9 +281,9 @@ export default function App() {
       <div className="stats">
         <Stat label="Events ingested" value={stats?.events ?? 0} loading={!loaded} />
         <Stat label="Raw alerts" value={stats?.alerts ?? 0} loading={!loaded} />
-        <Stat label="Correlated incidents" value={stats?.incidents ?? 0} tone="accent" loading={!loaded} />
+        <Stat label="Incidents found" value={stats?.incidents ?? 0} tone="accent" loading={!loaded} />
         <Stat label="Alert noise reduction" value={stats?.noise_reduction ?? 0} decimals={1} suffix="%" tone="good" loading={!loaded} />
-        <Stat label="Active incidents" value={stats?.active_incidents ?? 0} loading={!loaded} />
+        <Stat label="Active now" value={stats?.active_incidents ?? 0} loading={!loaded} />
         <div className="stat wide">
           <div className="sources">
             {!loaded && <Skeleton width="60%" />}
@@ -265,7 +295,7 @@ export default function App() {
       </div>
 
       <div className="main-grid">
-        <section className="panel" aria-labelledby="map-title">
+        <section className="panel" id="map-section" aria-labelledby="map-title">
           <div className="panel-head">
             <h2 className="panel-title" id="map-title">Service connections</h2>
             <div className="legend">
@@ -286,7 +316,7 @@ export default function App() {
           service={serviceFilter}
           onServiceChange={setServiceFilter}
           streaming={streaming}
-          onInjected={(text) => { showToast(text); refresh() }}
+          onInjected={(text) => { startFollow(); showToast(text); refresh() }}
           onError={(text) => showToast(text, 'err')}
         />
         <section className="panel incidents-panel" aria-labelledby="incidents-title">
