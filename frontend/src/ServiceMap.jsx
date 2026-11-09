@@ -155,7 +155,8 @@ export default function ServiceMap({ topology, incident, onSelectService, select
           const status = replaying
             ? (hasStarted(n.id) ? 'failing' : 'healthy')
             : (n.health?.status || 'healthy')
-          const isRoot = (incident ? rootService === n.id && revealed : Boolean(n.health?.root_cause)) && (!replaying || hasStarted(n.id))
+          // the tag only ever appears for a loaded incident with enough evidence
+          const isRoot = Boolean(incident) && rootService === n.id && revealed && (!replaying || hasStarted(n.id))
           const dim = incident && !incidentServices.has(n.id) && !isRoot
           const select = () => onSelectService?.(selectedService === n.id ? null : n.id)
           return (
