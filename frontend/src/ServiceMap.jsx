@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react'
 
 const W = 1000
-const NODE_W = 132
-const NODE_H = 46
-const TIER_GAP = 86
-const TOP = 34
+const NODE_W = 136
+const NODE_H = 48
+const TIER_GAP = 88
+const TOP = 32
 
-const KIND_ICON = {
-  frontend: '◧', gateway: '⇄', service: '◆', database: '⛁', cache: '⚡', external: '⇲', queue: '≣', unknown: '?',
+const KIND_LABEL = {
+  frontend: 'Client app', gateway: 'Gateway', service: 'Service', database: 'Database',
+  cache: 'Cache', external: 'External', queue: 'Queue', unknown: 'Unmapped',
 }
 
 function layout(nodes) {
@@ -20,7 +21,7 @@ function layout(nodes) {
     })
   })
   const maxTier = Math.max(0, ...nodes.map((n) => n.tier))
-  return { pos, height: TOP + NODE_H + maxTier * TIER_GAP + 30 }
+  return { pos, height: TOP + NODE_H + maxTier * TIER_GAP + 16 }
 }
 
 function curve(a, b) {
@@ -30,66 +31,66 @@ function curve(a, b) {
 
 export default function ServiceMap({ topology, incident, onSelectService, selectedService }) {
   const { pos, height } = useMemo(() => layout(topology?.nodes || []), [topology])
-  if (!topology) return <div className="empty">Loading topology…</div>
 
   const propagation = new Set((incident?.timeline?.propagation_edges || []).map((e) => `${e.from}>${e.to}`))
   const incidentServices = new Set((incident?.impact?.affected_services || []).map((s) => s.service))
   const rootService = incident?.root_cause?.service
 
   return (
-    <svg className="service-map" viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Service dependency map">
-      <defs>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="6" result="blur" />
-          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-        <marker id="arrow-hot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--red)" />
-        </marker>
-      </defs>
+    <div className="map-scroll">
+      <svg className="service-map" viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Service dependency map">
+        <defs>
+          <marker id="arrow-hot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--danger)" />
+          </marker>
+        </defs>
 
-      {topology.edges.map((e) => {
-        const a = pos[e.source]
-        const b = pos[e.target]
-        if (!a || !b) return null
-        const from = { x: a.x, y: a.y + NODE_H / 2 }
-        const to = { x: b.x, y: b.y - NODE_H / 2 }
-        const hot = propagation.has(`${e.target}>${e.source}`)
-        return hot ? (
-          <path key={`${e.source}-${e.target}`} className="edge hot" d={curve(to, from)} markerEnd="url(#arrow-hot)" />
-        ) : (
-          <path key={`${e.source}-${e.target}`} className="edge" d={curve(from, to)} />
-        )
-      })}
+        {topology.edges.map((e) => {
+          const a = pos[e.source]
+          const b = pos[e.target]
+          if (!a || !b) return null
+          const from = { x: a.x, y: a.y + NODE_H / 2 }
+          const to = { x: b.x, y: b.y - NODE_H / 2 }
+          const hot = propagation.has(`${e.target}>${e.source}`)
+          // Hot edges are drawn callee -> caller so the arrow shows the direction the failure travelled.
+          return hot
+            ? <path key={`${e.source}-${e.target}`} className="edge hot" d={curve(to, from)} markerEnd="url(#arrow-hot)" />
+            : <path key={`${e.source}-${e.target}`} className="edge" d={curve(from, to)} />
+        })}
 
-      {topology.nodes.map((n) => {
-        const p = pos[n.id]
-        const status = n.health?.status || 'healthy'
-        const inIncident = incidentServices.has(n.id)
-        const isRoot = rootService ? rootService === n.id : n.health?.root_cause
-        const dim = incident && !inIncident && !isRoot
-        return (
-          <g
-            key={n.id}
-            className={`node ${status} ${isRoot ? 'root' : ''} ${dim ? 'dim' : ''} ${selectedService === n.id ? 'selected' : ''}`}
-            transform={`translate(${p.x - NODE_W / 2}, ${p.y - NODE_H / 2})`}
-            onClick={() => onSelectService?.(selectedService === n.id ? null : n.id)}
-          >
-            {isRoot && <rect className="root-halo" x={-6} y={-6} width={NODE_W + 12} height={NODE_H + 12} rx={14} filter="url(#glow)" />}
-            <rect className="node-box" width={NODE_W} height={NODE_H} rx={10} />
-            <circle className="node-dot" cx={14} cy={NODE_H / 2} r={4.5} />
-            <text className="node-label" x={26} y={20}>{n.label}</text>
-            <text className="node-kind" x={26} y={35}>{KIND_ICON[n.kind] || '•'} {n.kind}</text>
-            {isRoot && (
-              <g transform={`translate(${NODE_W / 2 - 40}, -17)`}>
-                <rect className="root-tag" width={80} height={16} rx={8} />
-                <text className="root-tag-text" x={40} y={11.5} textAnchor="middle">ROOT CAUSE</text>
-              </g>
-            )}
-            <title>{`${n.label} (${n.id}) - ${status}${n.capability ? `\n${n.capability}` : ''}`}</title>
-          </g>
-        )
-      })}
-    </svg>
+        {topology.nodes.map((n) => {
+          const p = pos[n.id]
+          const status = n.health?.status || 'healthy'
+          const isRoot = rootService ? rootService === n.id : Boolean(n.health?.root_cause)
+          const dim = incident && !incidentServices.has(n.id) && !isRoot
+          const select = () => onSelectService?.(selectedService === n.id ? null : n.id)
+          return (
+            <g
+              key={n.id}
+              className={`node ${status} ${isRoot ? 'root' : ''} ${dim ? 'dim' : ''} ${selectedService === n.id ? 'selected' : ''}`}
+              transform={`translate(${p.x - NODE_W / 2}, ${p.y - NODE_H / 2})`}
+              onClick={select}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select() } }}
+              tabIndex={0}
+              role="button"
+              aria-pressed={selectedService === n.id}
+              aria-label={`${n.label}, ${status}${isRoot ? ', root cause' : ''}. Filter event stream`}
+            >
+              <rect className="node-box" width={NODE_W} height={NODE_H} rx={8} />
+              <circle className="node-dot" cx={16} cy={NODE_H / 2} r={4} />
+              <text className="node-label" x={28} y={21}>{n.label}</text>
+              <text className="node-kind" x={28} y={37}>{KIND_LABEL[n.kind] || n.kind}</text>
+              {isRoot && (
+                <g transform={`translate(${NODE_W / 2 - 40}, -12)`}>
+                  <rect className="root-tag" width={80} height={16} rx={4} />
+                  <text className="root-tag-text" x={40} y={12} textAnchor="middle">ROOT CAUSE</text>
+                </g>
+              )}
+              <title>{`${n.label} (${n.id}): ${status}${n.capability ? `. ${n.capability}` : ''}`}</title>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
 }

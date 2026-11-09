@@ -183,6 +183,17 @@ def health():
     return {"ok": True}
 
 
+SAMPLES = Path(__file__).resolve().parents[2] / "samples"
+
+
+@app.get("/api/samples/{name}", include_in_schema=False)
+def sample(name: str):
+    path = (SAMPLES / name).resolve()
+    if not path.is_relative_to(SAMPLES) or not path.is_file():
+        raise HTTPException(404, "Sample not found")
+    return FileResponse(path, media_type="text/plain", filename=name)
+
+
 # --- frontend -----------------------------------------------------------------
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if DIST.exists():
