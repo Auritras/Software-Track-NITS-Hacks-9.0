@@ -74,6 +74,19 @@ export default function ServiceMap({ topology, incident, onSelectService, select
     : (incident?.impact?.affected_services?.length || 0)
   const revealed = Boolean(incident) && failingCount >= EVIDENCE
   const [spotlight, setSpotlight] = useState(false)
+  const [hovered, setHovered] = useState(null)
+  // hover a node: highlight everything it depends on and everything that depends on it
+  const chain = useMemo(() => {
+    if (!hovered || !topology) return null
+    const down = {}, up = {}
+    topology.edges.forEach((e) => { (down[e.source] ??= []).push(e.target); (up[e.target] ??= []).push(e.source) })
+    const walk = (start, graph) => {
+      const seen = new Set([start]); const stack = [start]
+      while (stack.length) { const n = stack.pop(); (graph[n] || []).forEach((m) => { if (!seen.has(m)) { seen.add(m); stack.push(m) } }) }
+      return seen
+    }
+    return new Set([...walk(hovered, down), ...walk(hovered, up)])
+  }, [hovered, topology])
   const wasRevealed = useRef(false)
   const lastIncident = useRef(null)
   useEffect(() => {
@@ -89,7 +102,7 @@ export default function ServiceMap({ topology, incident, onSelectService, select
 
   return (
     <div className="map-scroll">
-      <svg className={`service-map ${spotlight ? 'spotlight' : ''}`} viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Service dependency map">
+      <svg className={`service-map ${spotlight ? 'spotlight' : ''} ${chain ? 'chain' : ''}`} viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Service dependency map">
         <defs>
           <pattern id="halftone" width="6" height="6" patternUnits="userSpaceOnUse">
             <rect width="6" height="6" fill="var(--pink-soft)" />
@@ -108,10 +121,20 @@ export default function ServiceMap({ topology, incident, onSelectService, select
           const to = { x: b.x, y: b.y - NODE_H / 2 }
           const hot = propagation.has(`${e.target}>${e.source}`) && (!replaying || hasStarted(e.source))
           // Hot edges are drawn callee -> caller so the arrow shows the direction the failure travelled.
-          if (!hot) return <path key={`${e.source}-${e.target}`} className="edge" d={curve(from, to)} />
+          const inChain = chain && chain.has(e.source) && chain.has(e.target)
+          if (!hot) {
+            const d = curve(from, to)
+            return (
+              <g key={`${e.source}-${e.target}`} className={inChain ? 'in-chain' : ''}>
+                <path className="edge" d={d} />
+                {/* healthy traffic: one slow packet per edge, caller -> dependency */}
+                {!spotlight && <circle className="packet" r="2.5"><animateMotion dur="3.6s" repeatCount="indefinite" path={d} /></circle>}
+              </g>
+            )
+          }
           const d = curve(to, from)
           return (
-            <g key={`${e.source}-${e.target}`}>
+            <g key={`${e.source}-${e.target}`} className={inChain ? 'in-chain' : ''}>
               <path className="edge hot" d={d} markerEnd="url(#arrow-hot)" />
               {/* particles travel from the failing callee to its caller: the direction the failure spread */}
               {[0, 0.6, 1.2].map((delay) => (
@@ -122,6 +145,10 @@ export default function ServiceMap({ topology, incident, onSelectService, select
             </g>
           )
         })}
+
+        {spotlight && rootService && pos[rootService] && (
+          <circle className="blast" cx={pos[rootService].x} cy={pos[rootService].y} r="40" aria-hidden="true" />
+        )}
 
         {topology.nodes.map((n) => {
           const p = pos[n.id]
@@ -134,9 +161,13 @@ export default function ServiceMap({ topology, incident, onSelectService, select
           return (
             <g
               key={n.id}
-              className={`node ${status} ${isRoot ? 'root' : ''} ${dim ? 'dim' : ''} ${selectedService === n.id ? 'selected' : ''}`}
+              className={`node ${status} ${isRoot ? 'root' : ''} ${dim ? 'dim' : ''} ${selectedService === n.id ? 'selected' : ''} ${chain?.has(n.id) ? 'in-chain' : ''}`}
               transform={`translate(${p.x - NODE_W / 2}, ${p.y - NODE_H / 2})`}
               onClick={select}
+              onMouseEnter={() => setHovered(n.id)}
+              onMouseLeave={() => setHovered(null)}
+              onFocus={() => setHovered(n.id)}
+              onBlur={() => setHovered(null)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select() } }}
               tabIndex={0}
               role="button"

@@ -1,7 +1,29 @@
 const BASE = import.meta.env.VITE_API_URL || ''
 
+// Private workspace id: each browser gets its own data on the server, so visitors never
+// see each other's runs. Kept for the browser session when storage is available.
+function makeId() {
+  const bytes = new Uint8Array(12)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+export const SESSION_ID = (() => {
+  try {
+    const saved = sessionStorage.getItem('jarvis-session')
+    if (saved) return saved
+    const id = makeId()
+    sessionStorage.setItem('jarvis-session', id)
+    return id
+  } catch {
+    return makeId()
+  }
+})()
+
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, options)
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: { ...(options.headers || {}), 'X-Jarvis-Session': SESSION_ID },
+  })
   if (!res.ok) {
     let detail = res.statusText
     try { detail = (await res.json()).detail || detail } catch { /* not json */ }

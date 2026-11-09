@@ -60,6 +60,8 @@ export default function App() {
   const [toast, showToast, hideToast] = useToast()
   const [cmdOpen, setCmdOpen] = useState(false)
   const [replayT, setReplayT] = useState(null)
+  const [sevFlash, setSevFlash] = useState(null)
+  const seenSev1 = useRef(null)
 
   // Camera follow: when a demo starts, glide to the map; when the stream ends, glide to the root cause.
   // Any manual scroll, touch or key press hands control back to the user.
@@ -227,6 +229,39 @@ export default function App() {
     )
     return list
   }, [scenarios, topology, faultCatalog, incidents, speed])
+
+  useEffect(() => {
+    if (!loaded) return
+    const sev1 = incidents.filter((i) => i.severity === 'SEV1' && i.status === 'active').map((i) => i.id)
+    if (seenSev1.current === null) { seenSev1.current = new Set(sev1); return } // don't flash on first load
+    const fresh = sev1.find((id) => !seenSev1.current.has(id))
+    sev1.forEach((id) => seenSev1.current.add(id))
+    if (fresh && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setSevFlash(fresh)
+      const t = setTimeout(() => setSevFlash(null), 900)
+      return () => clearTimeout(t)
+    }
+  }, [incidents, loaded])
+
+  // Recovery: when the selected incident resolves, play its spread backwards on the map.
+  const lastStatus = useRef({})
+  useEffect(() => {
+    if (!detail) return
+    const prev = lastStatus.current[detail.id]
+    lastStatus.current[detail.id] = detail.status
+    if (prev !== 'active' || detail.status !== 'resolved') return
+    const steps = detail.timeline.propagation
+    const end = Math.max(1, ...steps.map((p) => p.offset_seconds)) + 1
+    const started = performance.now()
+    let frame
+    const tick = (now) => {
+      const t = end - ((now - started) / 2600) * (end + 1)
+      if (t > -1) { setReplayT(t); frame = requestAnimationFrame(tick) } else setReplayT(null)
+    }
+    frame = requestAnimationFrame(tick)
+    const settle = setTimeout(() => setReplayT(null), 3200)
+    return () => { cancelAnimationFrame(frame); clearTimeout(settle) }
+  }, [detail?.id, detail?.status])
 
   const sim = stats?.simulation
   const streaming = Boolean(sim?.running)
@@ -418,6 +453,11 @@ export default function App() {
         </div>
       )}
       <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
+      {sevFlash && (
+        <div className="sev-flash" aria-hidden="true" key={sevFlash}>
+          <div className="sev-bubble">SEV1!</div>
+        </div>
+      )}
     </div>
   )
 }

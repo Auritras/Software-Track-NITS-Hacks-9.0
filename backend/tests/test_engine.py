@@ -239,3 +239,18 @@ def test_alertmanager_webhook():
     assert incidents[0]["root_service"] == "primary-db"
     assert set(incidents[0]["services"]) == {"primary-db", "auth-service", "api-gateway"}
     assert client.post("/api/integrations/alertmanager", json={"nope": 1}).status_code == 400
+
+
+def test_sessions_are_isolated():
+    from app.main import app
+    client = TestClient(app)
+    a = {"X-Jarvis-Session": "visitor-aaaa-1111"}
+    b = {"X-Jarvis-Session": "visitor-bbbb-2222"}
+    seeded = client.get("/api/stats", headers=a).json()["events"]
+    assert client.get("/api/stats", headers=b).json()["events"] == seeded  # both start with the demo
+    client.post("/api/reset", headers=a)
+    client.post("/api/events", headers=a, json={"service": "auth-service", "level": "error", "message": "Login failed"})
+    assert client.get("/api/stats", headers=a).json()["events"] == 1
+    assert client.get("/api/stats", headers=b).json()["events"] == seeded  # b is untouched
+    bad = {"X-Jarvis-Session": "x"}  # invalid ids fall back to the shared default workspace
+    assert client.get("/api/stats", headers=bad).status_code == 200
