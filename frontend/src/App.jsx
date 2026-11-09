@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
+import CommandMenu, { MOD } from './CommandMenu.jsx'
 import { api, fmtTime } from './api.js'
 import ServiceMap from './ServiceMap.jsx'
 import IncidentDetail, { DetailSkeleton } from './IncidentDetail.jsx'
 import { BrandMark, Button, Skeleton, useBusy } from './ui.jsx'
+import { AccuracyPanel, BreakPanel } from './Features.jsx'
 
 const POLL_MS = 1500
 
@@ -12,12 +15,13 @@ const REPO_URL = 'https://github.com/Auritras/Software-Track-NITS-Hacks-9.0'
 function useToast() {
   const [toast, setToast] = useState(null)
   const timer = useRef()
-  const show = useCallback((text, kind = 'ok') => {
-    setToast({ text, kind })
+  const show = useCallback((text, kind = 'ok', action = null) => {
+    setToast({ text, kind, action, id: Date.now() })
     clearTimeout(timer.current)
-    timer.current = setTimeout(() => setToast(null), 4000)
+    timer.current = setTimeout(() => setToast(null), action ? 7000 : 4000)
   }, [])
-  return [toast, show]
+  const hide = useCallback(() => setToast(null), [])
+  return [toast, show, hide]
 }
 
 function Stat({ label, value, tone = '', loading }) {
@@ -43,7 +47,9 @@ export default function App() {
   const [serviceFilter, setServiceFilter] = useState(null)
   const [anomaliesOnly, setAnomaliesOnly] = useState(false)
   const [offline, setOffline] = useState(false)
-  const [toast, showToast] = useToast()
+  const [toast, showToast, hideToast] = useToast()
+  const [cmdOpen, setCmdOpen] = useState(false)
+  const [faultCatalog, setFaultCatalog] = useState({})
   const [busy, run] = useBusy()
   const fileRef = useRef()
 
@@ -60,6 +66,23 @@ export default function App() {
   }, [anomaliesOnly])
 
   useEffect(() => { api.scenarios().then(setScenarios).catch(() => {}) }, [])
+  useEffect(() => { api.faults().then(setFaultCatalog).catch(() => {}) }, [])
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmdOpen((o) => !o) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Smooth crossfade between incidents where the browser supports view transitions.
+  const selectIncident = useCallback((id) => {
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(() => flushSync(() => setSelectedId(id)))
+    } else {
+      setSelectedId(id)
+    }
+  }, [])
   useEffect(() => {
     refresh()
     const t = setInterval(refresh, POLL_MS)
@@ -86,7 +109,17 @@ export default function App() {
     (r) => `Streaming scenario live for about ${Math.round(r.duration_seconds)} seconds`)
   const inject = () => act('instant', () => api.simulate(scenario, 'instant', speed),
     (r) => `Injected ${r.accepted} events`)
-  const reset = () => act('reset', async () => { await api.reset(); setSelectedId(null); setDetail(null) }, () => 'All data cleared')
+  const undoReset = () => act('undo', async () => { hideToast(); return api.undoReset() }, (r) => `Restored ${r.restored} events`)
+  const reset = () => run('reset', async () => {
+    try {
+      const r = await api.reset()
+      setSelectedId(null); setDetail(null)
+      showToast(r.cleared ? `Cleared ${r.cleared} events` : 'Nothing to clear', 'ok', r.cleared ? { label: 'Undo', onClick: undoReset } : null)
+      await refresh()
+    } catch (e) { showToast(e.message, 'err') }
+  })
+  const breakService = (service, fault) => act('break', () => api.injectFault(service, fault, 'live', 1),
+    (r) => `${topology?.nodes.find((n) => n.id === service)?.label || service} broken. Failure spreading to ${r.affected.length - 1} dependent services.`)
   const pushAlert = () => act('push', () => api.sendEvent({
     service: 'api-gateway', level: 'warning', message: 'p95 latency 1.9s on /api/v1/accounts',
   }), () => 'Alert received via POST /api/events')
@@ -97,6 +130,28 @@ export default function App() {
     act('upload', () => api.upload(file),
       (r) => `Ingested ${r.accepted} lines from ${r.filename}${r.skipped ? `, ${r.skipped} skipped` : ''}`)
   }
+
+  const commands = useMemo(() => {
+    const list = []
+    scenarios.forEach((s) => {
+      list.push({ id: `live-${s.id}`, group: 'Scenario', label: `Simulate live: ${s.name}`, run: () => act('live', () => api.simulate(s.id, 'live', speed), () => `Streaming ${s.name}`) })
+    })
+    const nodes = topology?.nodes || []
+    nodes.forEach((n) => {
+      (faultCatalog[n.id] || []).forEach((f) => {
+        list.push({ id: `break-${n.id}-${f.id}`, group: 'Break anything', label: `Break ${n.label}: ${f.label}`, run: () => breakService(n.id, f.id) })
+      })
+    })
+    incidents.forEach((i) => {
+      list.push({ id: `open-${i.id}`, group: 'Incident', label: `Open ${i.id}: ${i.title}`, hint: i.severity, run: () => selectIncident(i.id) })
+    })
+    list.push(
+      { id: 'upload', group: 'Data', label: 'Upload a log file', run: () => fileRef.current?.click() },
+      { id: 'push', group: 'Data', label: 'Push a sample alert via the API', run: pushAlert },
+      { id: 'reset', group: 'Data', label: 'Reset all data (can be undone)', run: reset },
+    )
+    return list
+  }, [scenarios, topology, faultCatalog, incidents, speed])
 
   const sim = stats?.simulation
   const streaming = Boolean(sim?.running)
@@ -112,6 +167,7 @@ export default function App() {
           <div>
             <h1>J.A.R.V.I.S.</h1>
             <div className="tagline">Justified Analysis, Reasoning &amp; Visualization of Incident Systems</div>
+            <div className="theme-tags"><span className="chip tag">Intelligent Systems</span><span className="chip tag">AI</span><span className="chip tag">Distributed Systems</span></div>
           </div>
         </div>
         <div className="controls">
@@ -133,6 +189,9 @@ export default function App() {
           <input ref={fileRef} type="file" accept=".log,.txt,.jsonl,.json" hidden onChange={upload} />
           <Button variant="quiet" onClick={pushAlert} loading={busy === 'push'} title="Sends a sample alert to POST /api/events">Push API alert</Button>
           <Button variant="quiet danger" onClick={reset} loading={busy === 'reset'}>Reset</Button>
+          <Button onClick={() => setCmdOpen(true)} title="Open the command menu">
+            Commands <span className="kbd-hint"><kbd>{MOD}</kbd> <kbd>K</kbd></span>
+          </Button>
         </div>
       </header>
 
@@ -173,6 +232,15 @@ export default function App() {
             : <Skeleton kind="map" />}
         </section>
 
+        <div className="side-col">
+        <BreakPanel
+          topology={topology}
+          service={serviceFilter}
+          onServiceChange={setServiceFilter}
+          streaming={streaming}
+          onInjected={(text) => { showToast(text); refresh() }}
+          onError={(text) => showToast(text, 'err')}
+        />
         <section className="panel incidents-panel" aria-labelledby="incidents-title">
           <div className="panel-head">
             <h2 className="panel-title" id="incidents-title">Related incidents</h2>
@@ -182,7 +250,7 @@ export default function App() {
           {loaded && incidents.length === 0 && <div className="empty">No incidents. All services are reporting normally.</div>}
           <div className="incident-list">
             {incidents.map((i) => (
-              <button type="button" key={i.id} className={`incident-card ${i.id === selectedId ? 'active' : ''}`} onClick={() => setSelectedId(i.id)} aria-pressed={i.id === selectedId}>
+              <button type="button" key={i.id} className={`incident-card ${i.id === selectedId ? 'active' : ''}`} onClick={() => selectIncident(i.id)} aria-pressed={i.id === selectedId}>
                 <div className="row between">
                   <span className={`sev ${i.severity}`}>{i.severity}</span>
                   <span className={`status ${i.status}`}>{i.status === 'active' ? 'Active' : 'Resolved'}</span>
@@ -194,9 +262,12 @@ export default function App() {
             ))}
           </div>
         </section>
+        </div>
       </div>
 
       {detailLoading ? <DetailSkeleton /> : (loaded ? <IncidentDetail incident={detail} /> : <DetailSkeleton />)}
+
+      <AccuracyPanel />
 
       <section className="panel" aria-labelledby="stream-title">
         <div className="panel-head">
@@ -220,7 +291,7 @@ export default function App() {
                   <td><span className={`badge ${e.severity}`}>{e.severity}</span></td>
                   <td className="small">{e.type_label}</td>
                   <td className="msg">{e.message}</td>
-                  <td>{e.incident_id ? <button type="button" className="link mono" onClick={() => setSelectedId(e.incident_id)}>{e.incident_id}</button> : <span className="muted">-</span>}</td>
+                  <td>{e.incident_id ? <button type="button" className="link mono" onClick={() => selectIncident(e.incident_id)}>{e.incident_id}</button> : <span className="muted">-</span>}</td>
                 </tr>
               ))}
               {loaded && shownEvents.length === 0 && <tr><td colSpan={7} className="empty">No events yet. Start a simulation or upload a log file.</td></tr>}
@@ -239,7 +310,13 @@ export default function App() {
       </footer>
 
       <div aria-live="polite" className="sr-only">{toast?.text}</div>
-      {toast && <div className={`toast ${toast.kind}`} role="status">{toast.text}</div>}
+      {toast && (
+        <div className={`toast ${toast.kind}`} role="status" key={toast.id}>
+          <span>{toast.text}</span>
+          {toast.action && <Button size="sm" onClick={toast.action.onClick} loading={busy === 'undo'}>{toast.action.label}</Button>}
+        </div>
+      )}
+      <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
     </div>
   )
 }

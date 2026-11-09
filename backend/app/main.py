@@ -11,7 +11,11 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import simulator
+import os
+import random
+
+from . import faults, simulator
+from .benchmark import run_benchmark
 from .engine import ACTIVE_WINDOW_S
 from .parsing import parse_log_text
 from .report import render_markdown
@@ -23,6 +27,17 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 store = EventStore()
 runner = simulator.SimulationRunner(store)
+
+
+def seed_demo_data() -> None:
+    """Pre-load the headline scenario so the dashboard never opens empty (disable with JARVIS_SEED_DEMO=0)."""
+    steps = simulator.build("db_pool_exhaustion")
+    base = datetime.now(timezone.utc) - timedelta(seconds=steps[-1][0] + 1)
+    store.add_raw(simulator.materialize("db_pool_exhaustion", base), source="simulator")
+
+
+if os.environ.get("JARVIS_SEED_DEMO", "1") != "0":
+    seed_demo_data()
 
 
 class SimulateRequest(BaseModel):
@@ -76,6 +91,59 @@ def simulate(req: SimulateRequest):
     return {"mode": "live", **runner.start(req.scenario, speed=max(0.25, min(req.speed, 10.0)))}
 
 
+class FaultRequest(BaseModel):
+    service: str
+    fault: str | None = None
+    mode: str = "live"
+    speed: float = 1.0
+
+
+@app.get("/api/faults")
+def fault_catalog():
+    """Which failures can be injected into each service (for "Break anything" mode)."""
+    return {sid: [{"id": f, "label": label} for f, label in faults.faults_for(store.topology, sid)]
+            for sid in store.topology.services}
+
+
+@app.post("/api/faults/inject")
+def inject_fault(req: FaultRequest):
+    """Break any service: the failure propagates through the real dependency graph."""
+    if req.service not in store.topology.services:
+        raise HTTPException(404, f"Unknown service '{req.service}'")
+    options = [f for f, _ in faults.faults_for(store.topology, req.service)]
+    fault = req.fault or options[0]
+    if fault not in options:
+        raise HTTPException(400, f"Fault '{fault}' does not apply to {req.service}; choose one of {options}")
+    plan = faults.plan_fault(store.topology, req.service, fault, random.Random())
+    name = f"fault:{req.service}:{fault}"
+    if req.mode == "instant":
+        base = datetime.now(timezone.utc) - timedelta(seconds=plan.steps[-1][0] + 1)
+        added = store.add_raw([{**raw, "timestamp": (base + timedelta(seconds=off)).isoformat()}
+                               for off, raw in plan.steps], source="fault-injection")
+        return {"mode": "instant", "accepted": len(added), "affected": plan.affected}
+    status = runner.start_steps(name, plan.steps, speed=max(0.25, min(req.speed, 10.0)), source="fault-injection")
+    return {"mode": "live", "affected": plan.affected, **status}
+
+
+_benchmark_cache: dict[tuple[int, int], dict] = {}
+
+
+@app.get("/api/benchmark")
+def benchmark_result(trials: int = 300, seed: int = 2026):
+    """Root-cause accuracy over random injected faults (cached per trials/seed)."""
+    trials = max(30, min(trials, 2000))
+    key = (trials, seed)
+    if key not in _benchmark_cache:
+        _benchmark_cache[key] = run_benchmark(trials, seed)
+    return _benchmark_cache[key]
+
+
+@app.post("/api/benchmark/run")
+def benchmark_rerun(trials: int = 300):
+    """Re-run with a fresh random seed, so results are not tied to one fixed set of faults."""
+    return run_benchmark(max(30, min(trials, 2000)), random.randint(1, 10**9))
+
+
 @app.post("/api/simulate/stop")
 def simulate_stop():
     runner.stop()
@@ -85,8 +153,15 @@ def simulate_stop():
 @app.post("/api/reset")
 def reset():
     runner.stop()
-    store.reset()
-    return {"ok": True}
+    return {"ok": True, "cleared": store.reset()}
+
+
+@app.post("/api/reset/undo")
+def undo_reset():
+    restored = store.undo_reset()
+    if not restored:
+        raise HTTPException(409, "Nothing to restore")
+    return {"ok": True, "restored": restored}
 
 
 @app.post("/api/settings")

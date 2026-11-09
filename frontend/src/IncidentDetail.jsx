@@ -7,6 +7,7 @@ const FACTORS = [
   ['precedence', 'How early this service started failing'],
   ['depth', '1 when none of its own dependencies are failing'],
   ['causal', 'Emitted a cause-level signal such as pool exhaustion, OOM or a deploy'],
+  ['intensity', 'How sustained the failure was: repeated errors outweigh a one-off warning'],
 ]
 const LINK_LABEL = { dependency: 'Common services', same_service: 'Same service', shared_id: 'Shared trace or host', pattern: 'Activity pattern' }
 const LINK_INFO = {
@@ -18,12 +19,14 @@ const LINK_INFO = {
 const PRIORITY = { immediate: 'Immediate', short_term: 'Short term', long_term: 'Long term' }
 
 function ConfidenceRing({ value }) {
-  const r = 32
+  const r = 30
   const c = 2 * Math.PI * r
   return (
     <svg className="ring" viewBox="0 0 80 80" role="img" aria-label={`Confidence ${value} percent`}>
       <circle cx="40" cy="40" r={r} className="ring-bg" />
       <circle cx="40" cy="40" r={r} className="ring-fg" strokeDasharray={`${(c * value) / 100} ${c}`} transform="rotate(-90 40 40)" />
+      <circle cx="40" cy="40" r={r + 5} className="ring-edge" />
+      <circle cx="40" cy="40" r={r - 5} className="ring-edge" />
       <text x="40" y="46" textAnchor="middle" className="ring-value">{value}%</text>
     </svg>
   )
@@ -103,7 +106,10 @@ export default function IncidentDetail({ incident }) {
       </section>
 
       <div className="detail-grid">
-        <section className="panel">
+        <section className="panel rc-panel">
+          <div className="burst-wrap" key={`${incident.id}:${rc.service}`} aria-hidden="true">
+            <div className="burst"><span>Root cause found!</span></div>
+          </div>
           <div className="panel-head"><h3 className="panel-title">Root cause detection</h3></div>
           <div className="rc-head">
             <ConfidenceRing value={rc.confidence} />
@@ -114,7 +120,7 @@ export default function IncidentDetail({ incident }) {
             </div>
           </div>
           <ul className="evidence">{rc.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
-          <h4 className="sub">Candidate ranking</h4>
+          <h4 className="sub">Candidate ranking <span className="muted small">· why each service was ruled in or out</span></h4>
           <div className="table-scroll">
             <table className="cand">
               <thead>
@@ -127,7 +133,7 @@ export default function IncidentDetail({ incident }) {
               <tbody>
                 {incident.candidates.map((c, i) => (
                   <tr key={c.service} className={i === 0 ? 'lead' : ''}>
-                    <td>{c.label}</td>
+                    <td className="cand-name"><div>{c.label}</div><div className="verdict">{c.verdict}</div></td>
                     {FACTORS.map(([f]) => <td key={f}><Bar value={c.factors[f]} /></td>)}
                     <td className="num">{c.score.toFixed(2)}</td>
                   </tr>

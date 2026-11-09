@@ -159,3 +159,58 @@ def test_api_end_to_end(tmp_path):
     topo = client.get("/api/topology").json()
     assert any(n["health"].get("root_cause") for n in topo["nodes"])
     assert client.get("/api/stats").json()["noise_reduction"] > 50
+
+
+@pytest.mark.parametrize("root", ["primary-db", "redis-cache", "bank-connector", "api-gateway",
+                                  "fraud-service", "message-queue", "auth-service"])
+def test_injected_faults_on_any_service_are_diagnosed(root):
+    import random as _random
+    from app.faults import faults_for, plan_fault
+    from app.topology import Topology
+    topo = Topology()
+    for fault, _ in faults_for(topo, root):
+        plan = plan_fault(topo, root, fault, _random.Random(11))
+        store = EventStore(topology=topo)
+        store.add_raw([{**raw, "timestamp": (BASE + timedelta(seconds=off)).isoformat()} for off, raw in plan.steps], "t")
+        main = max(analyse(store.events(), topo, now=NOW), key=lambda i: i["event_count"])
+        assert main["root_cause"]["service"] == root, (root, fault)
+        assert all(c["verdict"] for c in main["candidates"])
+
+
+def test_benchmark_reports_accuracy():
+    from app.benchmark import run_benchmark
+    result = run_benchmark(trials=60, seed=1)
+    assert result["top1_accuracy"] >= 90
+    assert result["top3_accuracy"] >= 95
+    assert {c["condition"] for c in result["by_condition"]} >= {"clean", "noise", "hard"}
+
+
+def test_why_not_mentions_failing_root():
+    main = max(run("db_pool_exhaustion"), key=lambda i: i["alert_count"])
+    auth = next(c for c in main["candidates"] if c["service"] == "auth-service")
+    assert "Primary DB" in auth["verdict"]
+
+
+def test_fault_api():
+    from app.main import app, store
+    store.reset()
+    client = TestClient(app)
+    catalog = client.get("/api/faults").json()
+    assert {f["id"] for f in catalog["redis-cache"]} == {"oom", "crash"}
+    r = client.post("/api/faults/inject", json={"service": "redis-cache", "fault": "oom", "mode": "instant"})
+    assert r.status_code == 200 and "auth-service" in r.json()["affected"]
+    assert client.get("/api/incidents").json()[0]["root_service"] == "redis-cache"
+    assert client.post("/api/faults/inject", json={"service": "redis-cache", "fault": "deploy"}).status_code == 400
+
+
+def test_reset_can_be_undone():
+    from app.main import app, store
+    store.reset()
+    client = TestClient(app)
+    client.post("/api/simulate", json={"scenario": "bad_deploy", "mode": "instant"})
+    n = client.get("/api/stats").json()["events"]
+    assert client.post("/api/reset").json()["cleared"] == n
+    assert client.get("/api/stats").json()["events"] == 0
+    assert client.post("/api/reset/undo").json()["restored"] == n
+    assert client.get("/api/stats").json()["events"] == n
+    assert client.post("/api/reset/undo").status_code == 409

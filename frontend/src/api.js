@@ -29,7 +29,12 @@ export const api = {
   simulate: (scenario, mode, speed) => post('/api/simulate', { scenario, mode, speed }),
   stop: () => post('/api/simulate/stop'),
   reset: () => post('/api/reset'),
+  undoReset: () => post('/api/reset/undo'),
   sendEvent: (event) => post('/api/events', event),
+  faults: () => request('/api/faults'),
+  injectFault: (service, fault, mode, speed) => post('/api/faults/inject', { service, fault, mode, speed }),
+  benchmark: () => request('/api/benchmark'),
+  rerunBenchmark: () => post('/api/benchmark/run'),
   upload: (file) => {
     const form = new FormData()
     form.append('file', file)
