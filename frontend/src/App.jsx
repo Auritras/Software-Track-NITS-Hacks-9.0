@@ -3,6 +3,7 @@ import { api, fmtTime } from './api.js'
 import ServiceMap from './ServiceMap.jsx'
 import IncidentDetail, { DetailSkeleton } from './IncidentDetail.jsx'
 import { BrandMark, Button, Skeleton, useBusy } from './ui.jsx'
+import { AccuracyPanel, BreakPanel } from './Features.jsx'
 
 const POLL_MS = 1500
 
@@ -173,6 +174,15 @@ export default function App() {
             : <Skeleton kind="map" />}
         </section>
 
+        <div className="side-col">
+        <BreakPanel
+          topology={topology}
+          service={serviceFilter}
+          onServiceChange={setServiceFilter}
+          streaming={streaming}
+          onInjected={(text) => { showToast(text); refresh() }}
+          onError={(text) => showToast(text, 'err')}
+        />
         <section className="panel incidents-panel" aria-labelledby="incidents-title">
           <div className="panel-head">
             <h2 className="panel-title" id="incidents-title">Related incidents</h2>
@@ -194,9 +204,12 @@ export default function App() {
             ))}
           </div>
         </section>
+        </div>
       </div>
 
       {detailLoading ? <DetailSkeleton /> : (loaded ? <IncidentDetail incident={detail} /> : <DetailSkeleton />)}
+
+      <AccuracyPanel />
 
       <section className="panel" aria-labelledby="stream-title">
         <div className="panel-head">

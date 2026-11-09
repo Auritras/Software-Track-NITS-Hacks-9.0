@@ -27,7 +27,8 @@ CORRELATION_KEYS = ("trace_id", "request_id", "correlation_id", "host")
 DEFAULT_WINDOW_S = 120
 ACTIVE_WINDOW_S = 90
 
-WEIGHTS = {"coverage": 0.35, "precedence": 0.25, "depth": 0.20, "causal": 0.20}
+WEIGHTS = {"coverage": 0.30, "precedence": 0.20, "depth": 0.15, "causal": 0.20, "intensity": 0.15}
+CAUSALITY_TOLERANCE_S = 5.0
 
 
 class _DSU:
@@ -150,12 +151,19 @@ def rank_root_causes(events: list[Event], topo: Topology) -> list[dict]:
     span = max((end - start).total_seconds(), 1.0)
 
     candidates = []
+    def gap(a: str, b: str) -> float:  # seconds from a's first anomaly to b's
+        return (first_seen[b] - first_seen[a]).total_seconds()
+
     for s, evs in by_service.items():
-        explained = ({s} | topo.upstream(s)) & services
+        # A cause cannot come after its effects: s only explains dependents that started
+        # failing after it (with a small tolerance for clock skew between hosts).
+        explained = {s} | {d for d in topo.upstream(s) & services if gap(s, d) >= -CAUSALITY_TOLERANCE_S}
         coverage = len(explained) / len(services)
         lead_s = (first_seen[s] - start).total_seconds()
         precedence = 1.0 - lead_s / span
-        failing_deps = sorted((topo.downstream(s) & services) - {s})
+        # Likewise, only dependencies that were already failing could have caused s to fail.
+        failing_deps = sorted(d for d in (topo.downstream(s) & services) - {s}
+                              if gap(d, s) >= -CAUSALITY_TOLERANCE_S)
         depth = 0.0 if failing_deps else 1.0
         cause_events = [e for e in evs if e.type in CAUSE_TYPES]
         if cause_events:
@@ -164,7 +172,11 @@ def rank_root_causes(events: list[Event], topo: Topology) -> list[dict]:
             causal = 0.3
         else:
             causal = 0.0
-        factors = {"coverage": coverage, "precedence": precedence, "depth": depth, "causal": causal}
+        # A sustained failure is stronger evidence than a one-off blip.
+        weight = sum(1.0 if e.severity in ("error", "critical") else 0.5 for e in evs if e.is_anomaly)
+        intensity = min(1.0, weight / 3.0)
+        factors = {"coverage": coverage, "precedence": precedence, "depth": depth,
+                   "causal": causal, "intensity": intensity}
         score = sum(WEIGHTS[k] * v for k, v in factors.items())
         candidates.append({
             "service": s,
@@ -183,12 +195,37 @@ def rank_root_causes(events: list[Event], topo: Topology) -> list[dict]:
     candidates.sort(key=lambda c: (-c["score"], c["lead_seconds"], c["service"]))
 
     top = candidates[0]
+    top["verdict"] = "Most likely root cause"
+    for c in candidates[1:]:
+        c["verdict"] = _why_not(c, top, len(services), topo)
     second = candidates[1]["score"] if len(candidates) > 1 else 0.0
     margin = (top["score"] - second) / top["score"] if top["score"] else 0.0
     top["confidence"] = round(min(0.99, top["score"] * (0.55 + 0.45 * margin)) * 100)
     for c in candidates[1:]:
         c["confidence"] = round(min(0.99, c["score"] * (1 - margin) * 0.55) * 100)
     return candidates
+
+
+def _why_not(c: dict, top: dict, n_services: int, topo: Topology) -> str:
+    """One-line, human-readable reason a candidate was ruled out in favour of ``top``."""
+    reasons = []
+    gap = c["lead_seconds"] - top["lead_seconds"]
+    if top["service"] in c["failing_dependencies"]:
+        reasons.append(f"depends on {top['label']}, which was already failing"
+                       + (f" {gap:.0f}s earlier" if gap >= 1 else ""))
+    elif c["failing_dependencies"]:
+        deps = ", ".join(topo.label(s) for s in c["failing_dependencies"][:2])
+        reasons.append(f"its own dependencies were failing ({deps})")
+    elif gap >= 1:
+        reasons.append(f"started failing {gap:.0f}s after {top['label']}")
+    if len(c["explains"]) < len(top["explains"]):
+        reasons.append(f"explains only {len(c['explains'])} of {n_services} affected services")
+    if not c["cause_signals"] and top["cause_signals"]:
+        reasons.append(f"showed only symptoms ({humanize_type(c['dominant_type'])}), no cause-level signal")
+    if not reasons:
+        reasons.append(f"scored lower on the combined evidence ({c['score']:.2f} vs {top['score']:.2f})")
+    text = "; ".join(reasons[:2])
+    return text[0].upper() + text[1:] + "."
 
 
 def _evidence(root: dict, events: list[Event], topo: Topology, n_services: int) -> list[str]:

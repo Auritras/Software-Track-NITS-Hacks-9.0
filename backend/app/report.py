@@ -49,11 +49,12 @@ def render_markdown(inc: dict) -> str:
         "",
         "Candidate ranking:",
         "",
-        "| Service | Score | Coverage | Precedence | Depth | Causal signal |",
-        "|---|---|---|---|---|---|",
+        "| Service | Score | Coverage | Precedence | Depth | Causal | Intensity | Verdict |",
+        "|---|---|---|---|---|---|---|---|",
         *[
             f"| {c['label']} | {c['score']:.2f} | {c['factors']['coverage']:.2f} | "
-            f"{c['factors']['precedence']:.2f} | {c['factors']['depth']:.2f} | {c['factors']['causal']:.2f} |"
+            f"{c['factors']['precedence']:.2f} | {c['factors']['depth']:.2f} | {c['factors']['causal']:.2f} | "
+            f"{c['factors']['intensity']:.2f} | {c['verdict']} |"
             for c in inc["candidates"]
         ],
         "",

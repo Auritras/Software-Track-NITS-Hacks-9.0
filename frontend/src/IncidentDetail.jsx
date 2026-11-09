@@ -7,6 +7,7 @@ const FACTORS = [
   ['precedence', 'How early this service started failing'],
   ['depth', '1 when none of its own dependencies are failing'],
   ['causal', 'Emitted a cause-level signal such as pool exhaustion, OOM or a deploy'],
+  ['intensity', 'How sustained the failure was: repeated errors outweigh a one-off warning'],
 ]
 const LINK_LABEL = { dependency: 'Common services', same_service: 'Same service', shared_id: 'Shared trace or host', pattern: 'Activity pattern' }
 const LINK_INFO = {
@@ -114,7 +115,7 @@ export default function IncidentDetail({ incident }) {
             </div>
           </div>
           <ul className="evidence">{rc.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
-          <h4 className="sub">Candidate ranking</h4>
+          <h4 className="sub">Candidate ranking <span className="muted small">· why each service was ruled in or out</span></h4>
           <div className="table-scroll">
             <table className="cand">
               <thead>
@@ -127,7 +128,7 @@ export default function IncidentDetail({ incident }) {
               <tbody>
                 {incident.candidates.map((c, i) => (
                   <tr key={c.service} className={i === 0 ? 'lead' : ''}>
-                    <td>{c.label}</td>
+                    <td className="cand-name"><div>{c.label}</div><div className="verdict">{c.verdict}</div></td>
                     {FACTORS.map(([f]) => <td key={f}><Bar value={c.factors[f]} /></td>)}
                     <td className="num">{c.score.toFixed(2)}</td>
                   </tr>

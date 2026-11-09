@@ -215,8 +215,10 @@ class SimulationRunner:
         self.status: dict = {"running": False}
 
     def start(self, name: str, speed: float = 1.0, seed: int | None = None) -> dict:
+        return self.start_steps(name, build(name, seed if seed is not None else random.randint(1, 10_000)), speed)
+
+    def start_steps(self, name: str, steps: list[Step], speed: float = 1.0, source: str = "simulator") -> dict:
         self.stop()
-        steps = build(name, seed if seed is not None else random.randint(1, 10_000))
         duration = steps[-1][0] if steps else 0
         self._stop = threading.Event()
         self.status = {"running": True, "scenario": name, "speed": speed, "emitted": 0,
@@ -230,7 +232,7 @@ class SimulationRunner:
                 if wait > 0 and stop.wait(wait):
                     break
                 self.store.add_raw([{**raw, "timestamp": datetime.now(timezone.utc).isoformat()}],
-                                   source="simulator")
+                                   source=source)
                 self.status["emitted"] += 1
             self.status["running"] = False
 
